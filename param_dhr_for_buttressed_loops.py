@@ -734,7 +734,7 @@ def build_param_dhrs(
                 #    time_cluster_end = time.time()
                 #    print('time of clustering: ', time_cluster_end - time_cluster_start)
 
-                # select 1st member from each cluster (TODO: maybe ranked by motifscore?)
+                # select 1st member from each cluster 
                 #if debug:
                 #    print('kmeans.labels_:  ', kmeans.labels_)
                 clusters = {x:[] for x in kmeans.labels_}
@@ -1042,7 +1042,6 @@ def build_param_dhrs(
                     this_r1_r1r2_list += this_r2_r1r2_list # one element list
 
 
-            # TODO: cluster based on r2 instead of just r2h1
             # cluster r2h1 (equivalent to r2 and r1r2): 
             #    if len(r1r2_list) < num_top_r2h1: output all
             #    else: do k=num_top_r2h1 kmeans
@@ -1062,7 +1061,7 @@ def build_param_dhrs(
                     kmeans = MiniBatchKMeans(n_clusters=num_top_r2h1, batch_size=50).fit(coords)
                 else:
                     kmeans = KMeans(n_clusters=num_top_r2h1).fit(coords)
-                # select 1st member from each cluster (TODO: maybe ranked by motifscore?)
+                # select 1st member from each cluster 
                 #if debug:
                 #    print('kmeans.labels_:  ', kmeans.labels_)
                 clusters = {x:[] for x in kmeans.labels_}
@@ -1369,8 +1368,6 @@ def build_param_dhrs(
             if len(helix_capped_list) > 0:
                
                 if not suppress_dhr_output:
-                    # TODO: (improve this)add param info to reslabel (as no se what else way 
-                    #                                        to write info into pdb...)
                     this_dhr.pose.pdb_info(pyrosetta.rosetta.core.pose.PDBInfo(this_dhr.pose, True))
 
                     # assign each helix to a new chain (prepare them for loop lookup)
@@ -1411,7 +1408,6 @@ def build_param_dhrs(
 
                     if output_check:
 
-                        # TODO
                         # propagate bottom loop
 
                         for j, this_p in enumerate(sorted(this_dhr.params.keys())):
@@ -1442,7 +1438,6 @@ def build_param_dhrs(
 
                     #if debug:
                     #    print(base_count, capped_id, sf_farep(capped_pose_prop), capped_params)
-                    # TODO: (improve this)add param info to reslabel (as no se what else way to write info into pdb...)
                     capped_pose_prop.pdb_info(pyrosetta.rosetta.core.pose.PDBInfo(capped_pose_prop, True))
 
                     # assign each helix to a new chain (prepare them for loop lookup)
@@ -1541,7 +1536,6 @@ def build_param_dhrs(
                 base_count += 1
                 #if debug:
                 #    print(i, sf_farep(this_dhr.pose), this_dhr.params)
-                # TODO: (improve this)add param info to reslabel (as no se what else way to write info into pdb...)
                 this_dhr.pose.pdb_info(pyrosetta.rosetta.core.pose.PDBInfo(this_dhr.pose, True))
 
                 # assign each helix to a new chain (prepare them for loop lookup)
@@ -1581,7 +1575,6 @@ def build_param_dhrs(
                             output_check = False
                 if output_check:
 
-                    # TODO
                     # propagate bottom loop
 
                     for j, this_p in enumerate(sorted(this_dhr.params.keys())):
@@ -1902,8 +1895,6 @@ def main():
     sf = sf_sym.clone()
     sf = sf.clone_as_base_class()  # this is all what asymmetrize_scorefunction() does...
 
-    # 
-    #  TODO: double check centroid residue generation (compare w/ remodel)
     # 
     # remodel's centroid weights (w/o terms of helical params, cst)
     sf_cen_sym = sf_sym.clone()

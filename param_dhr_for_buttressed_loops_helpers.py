@@ -555,8 +555,6 @@ def setup_repeat_symminfo(repeatlen, symminfo, nrepeat, base_repeat):
     symminfo.set_flat_score_multiply( nrepeat*repeatlen+1, 1 )
     symminfo.torsion_changes_move_other_monomers( True ) # note -- this signals that we are folding between repeats
 
-    ### what is the reason to do this???
-    ### If there is a good reason, why not do for repeats after base_repeat???
     ### 
     # repeats prior to base_repeat have score_multiply ==> 0
     """
@@ -644,8 +642,8 @@ def setup_movemap(pose, bblist=[], chilist=[]):
             elif resid in chilist:
                 mm.set_chi( resid, True )
     mm.set_jump( True )
-    mm.set_bb ( pose.size(), False ) # # for the virtual residue?
-    mm.set_chi( pose.size(), False ) # for the virtual residue?
+    mm.set_bb ( pose.size(), False ) 
+    mm.set_chi( pose.size(), False ) 
     #print('finished setup_movemap')
     return mm
 
@@ -687,10 +685,10 @@ def relax_pose(pose, cartesian_=False, bblist=[], chilist=[], rmsd_check_resids=
     fastrelax.min_type('lbfgs_armijo_nonmonotone')
     if cartesian_:
         sf.set_weight(pyrosetta.rosetta.core.scoring.ScoreType.pro_close, 0.0) # has to be zero
-        sf.set_weight(pyrosetta.rosetta.core.scoring.ScoreType.cart_bonded, 0.5) # what are good values
-        sf.set_weight(pyrosetta.rosetta.core.scoring.ScoreType.cart_bonded_angle, 0.5) # what are good values
-        sf.set_weight(pyrosetta.rosetta.core.scoring.ScoreType.cart_bonded_length, 0.5) # what are good values
-        sf.set_weight(pyrosetta.rosetta.core.scoring.ScoreType.cart_bonded_torsion, 0.5) # what are good values
+        sf.set_weight(pyrosetta.rosetta.core.scoring.ScoreType.cart_bonded, 0.5) 
+        sf.set_weight(pyrosetta.rosetta.core.scoring.ScoreType.cart_bonded_angle, 0.5) 
+        sf.set_weight(pyrosetta.rosetta.core.scoring.ScoreType.cart_bonded_length, 0.5) 
+        sf.set_weight(pyrosetta.rosetta.core.scoring.ScoreType.cart_bonded_torsion, 0.5) 
         fastrelax.cartesian(True)
         fastrelax.minimize_bond_angles(True)
         fastrelax.minimize_bond_lengths(True)
@@ -944,9 +942,7 @@ def align_cap_pose_to_anchor_coords(cap, coords, ncap=True):
     else:
         moveable_coords = get_anchor_coordinates_from_pose(cap, [2])
     R, t = np_utils.rigid_transform_3D(moveable_coords, coords)
-    #np_utils.rotate_pose(p, np_utils.numpy_to_rosetta(R)) # JHL, sth wrong w/ dig's pyrosetta: xx() not callable, but xx directly accessible
-    rotate_pose(cap, numpy_to_rosetta(R))  # JHL, so I had to rewrite np->rosetta and rotation function to change xx() to xx
-    #np_utils.translate_pose(cap, np_utils.numpy_to_rosetta(t.T))
+    rotate_pose(cap, numpy_to_rosetta(R))  
     translate_pose(cap, numpy_to_rosetta(t.T))
     return cap
 
@@ -958,10 +954,6 @@ def generate_cap(phipsi, sf_cap, aa='A', insert_Pro=True, insert_GLy=True, aacom
         cap.set_psi(i+1,phipsi[i-1][1])
         # omega is 180 by default
 
-    #
-    # TODO
-    # get the binselector to work!!
-    #
     if insert_GLy: # put pro and gly in if its their bin
         pack_reslist = []
         for i in range(1,len(phipsi)+1):
@@ -1391,7 +1383,6 @@ def add_caps_n_filter_direction_w_control( pose,
 
                 if cos_angle >= ncap_min_cos_angle:
 
-                    #TODO: copy ccap_direction code here for ncap_direction filtering
 
                     farep_score = sf_farep(pose_ncap)
                     #print(farep_score)
@@ -1885,8 +1876,6 @@ def tilt_inner_row_helices(pose_prop_cap, repeat_len, num_repeat=5, num_inner_he
 
 
         # post rotational translation 
-        #   CAUTION: this is weird, as new_h3 should already be aligned at ncap
-        #            before rotation, somehow i still need to do this after rotation...
         ncap_new_h3_reslist = list(range(1,5))
         ncap_new_h3_com = np.array(get_com(new_h3, ncap_new_h3_reslist))      
         t = pyrosetta.rosetta.numeric.xyzVector_double_t(*list(ncap_h3_com - ncap_new_h3_com))

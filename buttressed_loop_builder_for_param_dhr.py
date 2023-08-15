@@ -527,10 +527,8 @@ def numpy_to_rosetta(np_arr):
     
 def align_pose_to_anchor_coords(p, target_coord, anchor_coord):
     R, t = np_utils.rigid_transform_3D(anchor_coord, target_coord)
-    #np_utils.rotate_pose(p, np_utils.numpy_to_rosetta(R)) # JHL, sth wrong w/ dig's pyrosetta: xx() not callable, but xx directly accessible
-    my_own_rotate_pose(p, my_own_2D_numpy_to_rosetta(R))  # JHL, so I had to rewrite np->rosetta and rotation function to change xx() to xx
-    #np_utils.translate_pose(p, np_utils.numpy_to_rosetta(t.T)) # on mac there's no translate_pose
-    my_own_translate_pose(p, numpy_to_rosetta(t.T)) # so i copied the ones for older rosetta codes
+    my_own_rotate_pose(p, my_own_2D_numpy_to_rosetta(R))  
+    my_own_translate_pose(p, numpy_to_rosetta(t.T))
     return p
 
 def get_aligned_repeat_pose(input_pose, target_pose, anchor_resid, target_resid):
@@ -582,8 +580,6 @@ def poorman_repeat_propagate(pose, repeatlen=-1, num_repeat=4, overhang=1):
     return new_pose
 
 
-
-#===================================  TJ's repeat propagation ================================>>>>>>
 
 def extract_mer(in_pose, mer_start=1, mer_end=9):
     fragment_pose = pyrosetta.rosetta.core.pose.Pose()
@@ -765,9 +761,6 @@ def propogate_loops_idealize_and_symmetrize(loop_pose, ref_pose, num_repeats=4):
     
     return my_new_pose 
 
-#<<<<<<=============================  TJ's repeat propagation ======================================
-
-#===================================  TJ's repeat propagation as a mover =============================>>>>>
 
 class repeat_propagate_mover(pyrosetta.rosetta.protocols.moves.Mover):
     '''
@@ -781,7 +774,6 @@ class repeat_propagate_mover(pyrosetta.rosetta.protocols.moves.Mover):
     def __str__(self):
         return f'num_repeat: {self.num_repeat}'
 
-    #===================================  TJ's repeat propagation ================================>>>>>>
 
     def extract_mer(self, in_pose, mer_start=1, mer_end=9):
         fragment_pose = pyrosetta.rosetta.core.pose.Pose()
@@ -952,52 +944,8 @@ class repeat_propagate_mover(pyrosetta.rosetta.protocols.moves.Mover):
                     else:
                         loop_pose.append_residue_by_bond(ref_pose.residue(j))        
 
-        '''                 
-        ## now we build a new pose by piecing together the reference pose and new superimposed loops
-        ## be careful with index, additions, and subtrations
-        my_new_pose = pyrosetta.rosetta.core.pose.Pose()
-        my_new_pose.append_residue_by_jump(ref_pose.residue(1), 1)
-        for i in range(0, num_repeats):
-            if i == 0: ### handle the first repeat becasue we had to start the pose by jump ...
-                for j in range(2, loop1_s_e[0][0]+repeat_len*i):
-                    #start of repeat
-                    if 'Nterm' in ref_pose.residue(j).name():
-                        my_new_pose.append_residue_by_jump(ref_pose.residue(j),my_new_pose.size())
-                    else:
-                        my_new_pose.append_residue_by_bond(ref_pose.residue(j)) 
-                for j in range(1, loop1_pose_v[i].size()+1):
-                    my_new_pose.append_residue_by_bond(loop1_pose_v[i].residue(j)) # loop1
-                for j in range(loop1_s_e[1][0]+repeat_len*i+1, repeat_len*(i+1)+1):
-                    # second part of repeat
-                    if 'Nterm' in ref_pose.residue(j).name():
-                        my_new_pose.append_residue_by_jump(ref_pose.residue(j),my_new_pose.size())
-                    else:
-                        my_new_pose.append_residue_by_bond(ref_pose.residue(j))
-                ##for j in range(1, loop2_pose_v[i].size()+1):
-                ##    my_new_pose.append_residue_by_bond(loop2_pose_v[i].residue(j)) # loop2
-            else: ### handle internal repeats and last repeat
-                for j in range(repeat_len*i+1, loop1_s_e[0][0]+repeat_len*i):
-                    if 'Nterm' in ref_pose.residue(j).name():
-                        my_new_pose.append_residue_by_jump(ref_pose.residue(j),my_new_pose.size())
-                    else:
-                        my_new_pose.append_residue_by_bond(ref_pose.residue(j))
-                for j in range(1, loop1_pose_v[i].size()+1):
-                    my_new_pose.append_residue_by_bond(loop1_pose_v[i].residue(j))
-                for j in range(loop1_s_e[1][0]+repeat_len*i+1, repeat_len*(i+1)+1):
-                    if 'Nterm' in ref_pose.residue(j).name():
-                        my_new_pose.append_residue_by_jump(ref_pose.residue(j),my_new_pose.size())
-                    else:
-                        my_new_pose.append_residue_by_bond(ref_pose.residue(j))
-                #for j in range(1, loop2_pose_v[i].size()+1):
-                #    my_new_pose.append_residue_by_bond(loop2_pose_v[i].residue(j))
-        '''
 
-
-        
-        
         #return my_new_pose 
-
-    #<<<<<<=============================  TJ's repeat propagation ======================================
 
 
 
@@ -1008,12 +956,8 @@ class repeat_propagate_mover(pyrosetta.rosetta.protocols.moves.Mover):
         #pose = pose.get()
         self.propogate_loops_idealize_and_symmetrize(pose, self.ref_pose, self.num_repeats)
 
-#<<<<<==============================  TJ's repeat propagation as a mover ==================================
 
 
-
-
-#===================================  symmetric relax/min ================================>>>>>>
 
 
 # fills in a SymmetryInfo object with the necessary info
@@ -1090,28 +1034,7 @@ def setup_repeat_pose(pose, numb_repeats_=4, base_repeat=2):
     if not pyrosetta.rosetta.core.pose.symmetry.is_symmetric(pose):
         return False
 
-    ### what is the purpose of this???
-    ###
-    ##TJ adding these to Phil's function
     base_offset = (base_repeat-1)*repeatlen
-    """
-    for i in range(0,nrepeat):
-        j=1
-        while j <= repeatlen:
-            pos = j + base_offset
-            pose.set_phi  ( j+i*repeatlen, pose.phi  (pos) )
-            pose.set_psi  ( j+i*repeatlen, pose.psi  (pos) )
-            pose.set_omega( j+i*repeatlen, pose.omega(pos) )
-            j=j+1
-       
-    for i in range(0,nrepeat): 
-        j=1
-        while j <= repeatlen:
-            pos = j + base_offset
-            oldrsd = pyrosetta.rosetta.core.conformation.Residue( pose.residue(pos).clone() )
-            pose.replace_residue( j+i*repeatlen, oldrsd, False )
-            j=j+1
-    """
     #print('finished setup_repeat_pose')
 
 
@@ -1131,8 +1054,8 @@ def setup_movemap(pose, bblist=[], chilist=[]):
             elif resid in chilist:
                 mm.set_chi( resid, True )
     mm.set_jump( True )
-    mm.set_bb ( pose.size(), False ) # # for the virtual residue?
-    mm.set_chi( pose.size(), False ) # for the virtual residue?
+    mm.set_bb ( pose.size(), False ) 
+    mm.set_chi( pose.size(), False ) 
     #print('finished setup_movemap')
     return mm
 
@@ -1174,10 +1097,10 @@ def relax_pose(pose, cartesian_=False, bblist=[], chilist=[], rmsd_check_resids=
     fastrelax.min_type('lbfgs_armijo_nonmonotone')
     if cartesian_:
         sf.set_weight(pyrosetta.rosetta.core.scoring.ScoreType.pro_close, 0.0) # has to be zero
-        sf.set_weight(pyrosetta.rosetta.core.scoring.ScoreType.cart_bonded, 0.5) # what are good values
-        sf.set_weight(pyrosetta.rosetta.core.scoring.ScoreType.cart_bonded_angle, 0.5) # what are good values
-        sf.set_weight(pyrosetta.rosetta.core.scoring.ScoreType.cart_bonded_length, 0.5) # what are good values
-        sf.set_weight(pyrosetta.rosetta.core.scoring.ScoreType.cart_bonded_torsion, 0.5) # what are good values
+        sf.set_weight(pyrosetta.rosetta.core.scoring.ScoreType.cart_bonded, 0.5) 
+        sf.set_weight(pyrosetta.rosetta.core.scoring.ScoreType.cart_bonded_angle, 0.5) 
+        sf.set_weight(pyrosetta.rosetta.core.scoring.ScoreType.cart_bonded_length, 0.5) 
+        sf.set_weight(pyrosetta.rosetta.core.scoring.ScoreType.cart_bonded_torsion, 0.5) 
         fastrelax.cartesian(True)
         fastrelax.minimize_bond_angles(True)
         fastrelax.minimize_bond_lengths(True)
@@ -1240,9 +1163,6 @@ def RepeatProteinRelax_apply(pose, modify_symmetry_and_exit_=False, remove_symm_
         relax_pose(pose, cartesian_, bblist, chilist, rmsd_check_resids)
     pyrosetta.rosetta.core.pose.symmetry.make_asymmetric_pose(pose)
     seal_jumps(pose)
-
-#<<<<<<=============================  symmetric relax/min ======================================
-
 
 
 #===================================  loop direction check ================================>>>>>>
@@ -1308,31 +1228,6 @@ def compute_loop_direction(loop_pose, loop1_s, loop1_e, repeatlen, num_repeats=4
     circle_a, circle_b, circle_c = norm_vec
     circle_d = -1 * np.dot(norm_vec, com_r23)
 
-    '''
-    ###################### Obsolete plane def below! ######################
-    if num_repeats%2 == 0:
-        # center of mass of the region spanning +/- 8 residues from the middle residue of the pose
-        rmid = int(loop_pose.size()/2)
-        com_middle = np.array(get_com(loop_pose, list(range(rmid-8,rmid+8 + 1))))
-    else:
-        # center of mass of the central unit excluding loop +/- 6 residues
-        loop_mid_s, loop_mid_e = loop1_s + repeatlen * int(num_repeats/2), loop1_e + repeatlen * int(num_repeats/2)
-        loop_mid_range = range(loop_mid_s - 6, loop_mid_e + 6 + 1)
-        mid_reslist = []
-        for resi in range(1, repeatlen+1):
-            resi += repeatlen * int(num_repeats/2)
-            if resi not in loop_mid_range:
-                mid_reslist.append(resi)
-        com_middle = np.array(get_com(loop_pose, mid_reslist))
-    #print(com_middle)
-
-    # plane equation ax+by+cz+d = 0, containing points: com_middle, com_r1 and com_r4
-    norm_vec = np.cross(com_r1 - com_middle, com_r4 - com_middle)
-    a, b, c = norm_vec
-    d = np.dot(norm_vec, com_middle)
-    ###################### Obsolete plane def above! ######################
-    '''
-
 
     ###################### Current plane def below! ######################
     # com_middle: center of mass of the capping residues (hardcoded 3) of the middle helices
@@ -1371,19 +1266,6 @@ def compute_loop_direction(loop_pose, loop1_s, loop1_e, repeatlen, num_repeats=4
     #print(a,b,c,d)
 
     # find loop residues farthest from com_r2
-    #
-    #  todo: instead of farthest point from com_r2, try farthest point from the plane
-    #
-    '''
-    # max dist to com_r2
-    max_dist_res = [-1, 0, [0,0,0]]
-    for resid in range(loop1_s+repeat_ahead, loop1_e+repeat_ahead+1):
-            x,y,z = loop_pose.residue(resid).xyz('CA')[0], loop_pose.residue(resid).xyz('CA')[1], loop_pose.residue(resid).xyz('CA')[2]
-            dist = np.linalg.norm( np.array([x,y,z]) - com_r2)
-            if dist > max_dist_res[1]:
-                    max_dist_res = [resid, dist, np.array([x,y,z])]
-    '''
-
     if max_dist_type == 'plane':
         # max dist to the plane
         max_dist_res = [-1, 0, [0,0,0]]
@@ -1425,15 +1307,6 @@ def compute_loop_direction(loop_pose, loop1_s, loop1_e, repeatlen, num_repeats=4
     proj = np.array([e+k*a, f+k*b, g+k*c])
     #print('pseudoatom com_point, pos=[{}]'.format(','.join([str(x) for x in max_dist_res[-1]])))
     #print('pseudoatom com_proj, pos=[{}]'.format(','.join([str(x) for x in proj])))
-
-    '''
-    ###################### Obsolete angle def below! ######################
-    # compute the angle between com_r2->proj and com_r2->max_dist_res[-1]
-    unit_vec = (max_dist_res[-1]-com_r2) / np.linalg.norm(max_dist_res[-1]-com_r2)
-    unit_vec_proj = (proj-com_r2) / np.linalg.norm(proj-com_r2)
-    cos_angle = np.dot(unit_vec, unit_vec_proj)
-    ###################### Obsolete angle def above! ######################
-    '''
 
     ###################### new angle def below! ######################
     # compute the angle between com_r2_proj->proj and com_r2_proj->max_dist_res[-1]
@@ -1661,9 +1534,7 @@ def align_cap_pose_to_anchor_coords(cap, coords, ncap=True):
     else:
         moveable_coords = get_anchor_coordinates_from_pose(cap, [2])
     R, t = np_utils.rigid_transform_3D(moveable_coords, coords)
-    #np_utils.rotate_pose(p, np_utils.numpy_to_rosetta(R)) # JHL, sth wrong w/ dig's pyrosetta: xx() not callable, but xx directly accessible
-    my_own_rotate_pose(cap, my_own_2D_numpy_to_rosetta(R))  # JHL, so I had to rewrite np->rosetta and rotation function to change xx() to xx
-    #np_utils.translate_pose(cap, np_utils.numpy_to_rosetta(t.T))
+    my_own_rotate_pose(cap, my_own_2D_numpy_to_rosetta(R))  
     my_own_translate_pose(cap, numpy_to_rosetta(t.T))
     return cap
 
@@ -1675,10 +1546,6 @@ def generate_cap(phipsi, sf_cap, aa='A', insert_Pro=True, insert_GLy=True, aacom
         cap.set_psi(i+1,phipsi[i-1][1])
         # omega is 180 by default
 
-    #
-    # TODO
-    # get the binselector to work!!
-    #
     if insert_GLy: # put pro and gly in if its their bin
         pack_reslist = []
         for i in range(1,len(phipsi)+1):
@@ -2769,8 +2636,6 @@ def build_loop(param_file, cut_combination, input_anchor_pos, before_frag_length
         #if _DEBUG:
         #    print(f'DEBUG:  Reading param files for trial {mdl+1} ...')
 
-        # TODO
-        # read the param files once at the beginner instead of repeating this in the loop!!!
 
         # sample from param_file instead, if the file is specified
         cut_start, cut_end = -1, -1
@@ -2858,7 +2723,6 @@ def build_loop(param_file, cut_combination, input_anchor_pos, before_frag_length
                 num_repeats = find_num_repeats_by_rmsd(scaffold)
             scaffold_repeatlen = int(p.size()/num_repeats)
 
-            # TODO: double check if this mutation code is working
             # mutate cut site and flanking residues to ala
             base_cut_start = cut_start%scaffold_repeatlen if cut_start%scaffold_repeatlen != 0 else scaffold_repeatlen
             base_cut_end = cut_end%scaffold_repeatlen if cut_end%scaffold_repeatlen != 0 else scaffold_repeatlen
@@ -2927,8 +2791,6 @@ def build_loop(param_file, cut_combination, input_anchor_pos, before_frag_length
         #if _DEBUG:
         #    print(f'DEBUG:  Setting up GenKIC for trial {mdl+1} ...')
 
-        ### To be tested! use fixed anchor points (not included in genkic, e.g. bridge res and capping res)
-        ### in this case, the last residue of ccap and first residue of ncap are set as pivots (therefore a dummy residue required?)
         anchor_pos = input_anchor_pos + len(c_cap_phipsi)
 
         num_res_added = before_frag_length + len(phipsi) + after_frag_length
@@ -2983,26 +2845,6 @@ def build_loop(param_file, cut_combination, input_anchor_pos, before_frag_length
         #st = fragment_gen_kic_mover(p, before_frag_length, after_frag_length, phipsi, n_cap_phipsi, c_cap_phipsi, anchor_pos,
         #                   res_indices[0], res_indices[1], sf, sf_high_hbond, perturb=perturb)
 
-
-        '''
-        # this way of setting up preselection mover costs ~6.5s (whereas setting up from python costs only ~0.0003s!!!)
-        if _DEBUG:
-            print(f'DEBUG:  Setting up GenKIC:preselection_mover:filters for trial {mdl+1} ...')
-            time_s = time.time()
-    
-        # filter intra hbond thru preselection filter in genkic
-        script_string = get_xml_string(anchor_pos, num_res_added, 
-                                        scaffold_repeatlen, 
-                                        loop_flank=1, 
-                                        min_intraloop_hbond=min_intraloop_hbond_num, 
-                                        min_interloop_hbond=min_interloop_hbond_num, 
-                                        MAX_UNSATS=10000, MAX_GAMMA=10) #unsats tricky to judge at this stage
-        xml_objs = pyrosetta.rosetta.protocols.rosetta_scripts.XmlObjects.create_from_string( script_string )
-        preselection_pp = xml_objs.get_mover('preselection_pp')
-        if _DEBUG:
-            time_e = time.time()
-            print(f'DEBUG:  Time: {time_e-time_s}')
-        '''
 
 
         #if _DEBUG:
@@ -3297,8 +3139,7 @@ def build_loop(param_file, cut_combination, input_anchor_pos, before_frag_length
                     continue   
 
 
-            ''' 
-            ## no need for this here since I'm now filtering this in genKIC
+            ## no need for this here if filtering this in genKIC
             # intra loop hbond filters
             if min_intraloop_hbond_num > 0 or min_intraloop_bbbb_hbond_num > 0:
                 if _DEBUG:
@@ -3323,11 +3164,9 @@ def build_loop(param_file, cut_combination, input_anchor_pos, before_frag_length
                     if _DEBUG:
                         print('DEBUG:       no pose remains after intraloop hbond search, skipping ...')
                     continue 
-            '''     
 
 
-            '''
-            ## no need since now I filter interloop bb-bb hb in genkic
+            ## no need if filtering interloop bb-bb hb in genkic
             # search for potential interloop bb-bb hb
             if min_potential_interloop_bbbb_hbond_num > 0:
                 if _DEBUG:
@@ -3365,7 +3204,6 @@ def build_loop(param_file, cut_combination, input_anchor_pos, before_frag_length
                 pose_prop_candidates = potential_interloop_bbbb_hb_pose_prop_candidates
                 if len(pose_prop_candidates) == 0:
                     continue                
-            '''
 
 
             # search for potential interloop sc-bb bidentate hbonds
@@ -3430,7 +3268,7 @@ def build_loop(param_file, cut_combination, input_anchor_pos, before_frag_length
                             #    print('DEBUG:     at residue {}, only {} potential bidentate bb-sc hbond found, {} required ...'.format(resid, len(potential_bidentate_hbonds), min_num_pseudo_bidentate))
                             continue
 
-                        ### CAUTION!! here I only allow HIS to pack on helix or capping residues
+                        ### CAUTION!! here we only allow HIS to pack on helix or capping residues
                         if this_pose_prop.sequence(resid, resid) == 'H' and resid in loops[1][1:-1]: 
                             continue
 
@@ -3517,12 +3355,6 @@ def build_loop(param_file, cut_combination, input_anchor_pos, before_frag_length
 
             ############################### filters before relax ###############################<<<<<
 
-            ##
-            #
-            #  TODO: add hb cst to existing bbhb (e.g. beta turn)
-            #
-            ##
-
 
 
             # relax
@@ -3535,9 +3367,6 @@ def build_loop(param_file, cut_combination, input_anchor_pos, before_frag_length
                     this_pose_prop_ref = this_pose_prop.clone()
                     label_list = sympose.labels()
                     used_sc_resids = sympose.used_sc_resids()                
-
-                    # TODO
-                    # add hbond cst to intra/interloop hbonds!!!!
 
 
                     coord_cst = pyrosetta.rosetta.protocols.constraint_movers.AddConstraintsToCurrentConformationMover()
@@ -3585,10 +3414,6 @@ def build_loop(param_file, cut_combination, input_anchor_pos, before_frag_length
                     label_list = sympose.labels()
                     used_sc_resids = sympose.used_sc_resids()     
                     new_used_sc_resids = {}                
-
-                    ####
-                    #     TODO: scan loop sequence, keep pose directly if no non-ala/gly residue found (the base bbhb pose will then be kept till the end)
-                    ####
 
 
                     bidentate_total_count = 0
@@ -4181,9 +4006,6 @@ def build_loop(param_file, cut_combination, input_anchor_pos, before_frag_length
                 RepeatProteinRelax_apply(this_pose_prop, modify_symmetry_and_exit_=True, remove_symm_=True, bblist=min_reslist, chilist=min_reslist, num_repeats=num_repeats)
                 this_pose_prop_score = sf(this_pose_prop)
 
-                #
-                # TODO: expand info lines 
-                #
 
                 loop_scores = [this_pose_prop.energies().residue_total_energy(x) for x in range(loop_s_base-neighbor_flank_n, loop_e_base+neighbor_flank_c+1)]
                 loop_energy = sum(loop_scores) / float(len(loop_scores))
