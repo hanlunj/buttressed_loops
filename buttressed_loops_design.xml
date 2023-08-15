@@ -1,0 +1,380 @@
+<ROSETTASCRIPTS>
+
+
+    <SCOREFXNS>
+
+        <ScoreFunction name="beta" weights="beta_nov16" />
+
+        <ScoreFunction name="beta_design" weights="beta_nov16" >
+            <Reweight scoretype="res_type_constraint" weight="0.3" />
+            <Reweight scoretype="aa_composition" weight="1.0" />
+            Reweight scoretype="arg_cation_pi" weight="3" />
+            Reweight scoretype="approximate_buried_unsat_penalty" weight="5" />
+            Set approximate_buried_unsat_penalty_burial_atomic_depth="3.5" />
+            Set approximate_buried_unsat_penalty_hbond_energy_threshold="-0.5" />
+            Set approximate_buried_unsat_penalty_hbond_bonus_cross_chain="-1" />
+        </ScoreFunction>
+
+        <ScoreFunction name="beta_design_sym" weights="beta_nov16" symmetric="1" >
+            <Reweight scoretype="coordinate_constraint" weight="1.0" />
+            <Reweight scoretype="atom_pair_constraint" weight="1.0" />
+            <Reweight scoretype="angle_constraint" weight="1.0"/>
+            <Reweight scoretype="dihedral_constraint" weight="1.0"/>
+            <Reweight scoretype="res_type_constraint" weight="0.3" />
+            <Reweight scoretype="aa_composition" weight="1.0" />
+            Reweight scoretype="arg_cation_pi" weight="3" />
+            Reweight scoretype="approximate_buried_unsat_penalty" weight="5" />
+            Set approximate_buried_unsat_penalty_burial_atomic_depth="3.5" />
+            Set approximate_buried_unsat_penalty_hbond_energy_threshold="-0.5" />
+            Set approximate_buried_unsat_penalty_hbond_bonus_cross_chain="-1" />
+        </ScoreFunction>
+
+        <ScoreFunction name="beta_design_sym_cart" weights="beta_nov16_cart" symmetric="1" >
+            <Reweight scoretype="coordinate_constraint" weight="1.0" />
+            <Reweight scoretype="atom_pair_constraint" weight="1.0" />
+            <Reweight scoretype="angle_constraint" weight="1.0"/>
+            <Reweight scoretype="dihedral_constraint" weight="1.0"/>
+            <Reweight scoretype="res_type_constraint" weight="0.3" />
+            <Reweight scoretype="aa_composition" weight="1.0" />
+            Reweight scoretype="arg_cation_pi" weight="3" />
+            Reweight scoretype="approximate_buried_unsat_penalty" weight="5" />
+            Set approximate_buried_unsat_penalty_burial_atomic_depth="3.5" />
+            Set approximate_buried_unsat_penalty_hbond_energy_threshold="-0.5" />
+            Set approximate_buried_unsat_penalty_hbond_bonus_cross_chain="-1" />
+        </ScoreFunction>
+
+        <ScoreFunction name="beta_relax" weights="beta_nov16" >
+            Reweight scoretype="arg_cation_pi" weight="3" />
+            Reweight scoretype="approximate_buried_unsat_penalty" weight="5" />
+            Set approximate_buried_unsat_penalty_burial_atomic_depth="3.5" />
+            Set approximate_buried_unsat_penalty_hbond_energy_threshold="-0.5" />
+        </ScoreFunction>
+
+        <ScoreFunction name="beta_relax_sym" weights="beta_nov16" symmetric="1" >
+            Reweight scoretype="arg_cation_pi" weight="3" />
+            Reweight scoretype="approximate_buried_unsat_penalty" weight="5" />
+            Set approximate_buried_unsat_penalty_burial_atomic_depth="3.5" />
+            Set approximate_buried_unsat_penalty_hbond_energy_threshold="-0.5" />
+        </ScoreFunction>
+
+        <ScoreFunction name="beta_relax_sym_cart" weights="beta_nov16_cart" symmetric="1" >
+            Reweight scoretype="arg_cation_pi" weight="3" />
+            Reweight scoretype="approximate_buried_unsat_penalty" weight="5" />
+            Set approximate_buried_unsat_penalty_burial_atomic_depth="3.5" />
+            Set approximate_buried_unsat_penalty_hbond_energy_threshold="-0.5" />
+        </ScoreFunction>
+
+    </SCOREFXNS>
+
+
+    <RESIDUE_SELECTORS>
+
+        <Layer name="surface" select_core="false" select_boundary="false" select_surface="true" use_sidechain_neighbors="true"/>
+        <Layer name="boundary" select_core="false" select_boundary="true" select_surface="false" use_sidechain_neighbors="true"/>
+        <Layer name="core" select_core="true" select_boundary="false" select_surface="false" use_sidechain_neighbors="true"/>
+        <SecondaryStructure name="sheet" overlap="0" minH="3" minE="2" include_terminal_loops="false" use_dssp="true" ss="E"/>
+        <SecondaryStructure name="entire_loop" overlap="0" minH="3" minE="2" include_terminal_loops="true" use_dssp="true" ss="L"/>
+        <SecondaryStructure name="entire_helix" overlap="0" minH="3" minE="2" include_terminal_loops="false" use_dssp="true" ss="H"/>
+        <And name="helix_cap" selectors="entire_loop">
+            <PrimarySequenceNeighborhood lower="1" upper="0" selector="entire_helix"/>
+        </And>
+        <And name="helix_start" selectors="entire_helix">
+            <PrimarySequenceNeighborhood lower="0" upper="1" selector="helix_cap"/>
+        </And>
+        <And name="helix" selectors="entire_helix">
+            <Not selector="helix_start"/>
+        </And>
+        <And name="loop" selectors="entire_loop">
+            <Not selector="helix_cap"/>
+        </And>
+
+        <Not name="not_core" selector="core"/>
+        <Not name="not_boundary" selector="boundary"/>
+        <Not name="not_surface" selector="surface"/>
+
+        <And name="core_helix" selectors="core,entire_helix" />
+        <And name="boundary_helix" selectors="boundary,entire_helix" />
+        <And name="surface_helix" selectors="surface,entire_helix" />
+        <Or name="core_boundary_helix" selectors="core_helix,boundary_helix" />
+
+        <SSElement name="first_repeat" selection="n_term" to_selection="2,H,E"/>
+        <SSElement name="second_repeat" selection="2,H,E" to_selection="4,H,E"/>
+        <SSElement name="last_repeat" selection="-2,H,S" to_selection="c_term"/>
+        <Or name="tails" selectors="first_repeat,last_repeat" />
+        <And name="tails_surface" selectors="tails,surface"/>
+        <Not name="not_tails_surface" selector="tails_surface"/>
+
+        Index name="bidentate_res_sc" resnums="%%BIDENTATE_HBONDS_SC%%" error_on_out_of_bounds_index="false"/>
+        Index name="bidentate_res_bb" resnums="%%BIDENTATE_HBONDS_BB%%" error_on_out_of_bounds_index="false"/>
+
+        <ResidueName name="pro_and_gly_positions" residue_name3="PRO,GLY" />
+
+        <Bin name="Ebin" bin="E" bin_params_file="ABEGO" />
+        <Bin name="Gbin" bin="G" bin_params_file="ABEGO" />
+        <Or name="EGbin" selectors="Ebin,Gbin" />
+        <Not name="non_EGbin" selector="EGbin"/>
+
+        <ResidueName name="gly" residue_name3="GLY" />
+
+
+        <Layer name="asymmetric_surface" select_core="false" select_boundary="false" select_surface="true" ball_radius="2.0" use_sidechain_neighbors="false" core_cutoff="20.0" surface_cutoff="40.0" /> # default
+        <ResidueName name="hydrophobic" residue_name3="ALA,VAL,ILE,LEU,MET,PHE,TYR,TRP" />
+        <And name="surface_hydrophobic" selectors="asymmetric_surface,hydrophobic" />
+        <Neighborhood name="surface_nei" selector="surface_hydrophobic" distance="6." include_focus_in_subset="false"/>
+        <Or name="surface_hydrophobic_and_nei" selectors="surface_hydrophobic,surface_nei"/>
+        <Not name="non_surface_hydrophobic_and_nei" selector="surface_hydrophobic_and_nei"/>
+
+        <Index name="start_dummy" resnums="%%start_dummy%%" error_on_out_of_bounds_index="false"/>
+        <Index name="my_surface_AND_helix_start" resnums="%%surface_AND_helix_start%%" error_on_out_of_bounds_index="false"/>
+        <Index name="my_surface_AND_helix" resnums="%%surface_AND_helix%%" error_on_out_of_bounds_index="false"/>
+        <Index name="my_surface_AND_sheet" resnums="%%surface_AND_sheet%%" error_on_out_of_bounds_index="false"/>
+        <Index name="my_surface_AND_loop" resnums="%%surface_AND_loop%%" error_on_out_of_bounds_index="false"/>
+        <Index name="my_boundary_AND_helix_start" resnums="%%boundary_AND_helix_start%%" error_on_out_of_bounds_index="false"/>
+        <Index name="my_boundary_AND_helix" resnums="%%boundary_AND_helix%%" error_on_out_of_bounds_index="false"/>
+        <Index name="my_boundary_AND_sheet" resnums="%%boundary_AND_sheet%%" error_on_out_of_bounds_index="false"/>
+        <Index name="my_boundary_AND_loop" resnums="%%boundary_AND_loop%%" error_on_out_of_bounds_index="false"/>
+        <Index name="my_core_AND_helix_start" resnums="%%core_AND_helix_start%%" error_on_out_of_bounds_index="false"/>
+        <Index name="my_core_AND_helix" resnums="%%core_AND_helix%%" error_on_out_of_bounds_index="false"/>
+        <Index name="my_core_AND_sheet" resnums="%%core_AND_sheet%%" error_on_out_of_bounds_index="false"/>
+        <Index name="my_core_AND_loop" resnums="%%core_AND_loop%%" error_on_out_of_bounds_index="false"/>
+        <Index name="my_helix_cap" resnums="%%helix_cap%%" error_on_out_of_bounds_index="false"/>
+        <Index name="end_dummy" resnums="%%end_dummy%%" error_on_out_of_bounds_index="false"/>
+
+        <Or name="my_core" selectors="my_core_AND_helix_start,my_core_AND_helix,my_core_AND_sheet,my_core_AND_loop" />
+        <Or name="my_core_boundary_helix" selectors="my_core_AND_helix,my_boundary_AND_helix" />
+        <Or name="my_helix_start" selectors="my_surface_AND_helix_start,my_boundary_AND_helix_start,my_core_AND_helix_start" />
+
+
+
+
+    </RESIDUE_SELECTORS>
+
+
+    <TASKOPERATIONS>
+
+        <DesignRestrictions name="layer_design">
+            <Action selector_logic="start_dummy"                 aas="AEKQR"/>
+            <Action selector_logic="my_surface_AND_helix_start"  aas="AEKPQR"/>
+            <Action selector_logic="my_surface_AND_helix"        aas="AEKQR"/>
+            <Action selector_logic="my_surface_AND_sheet"        aas="DEHKNQRST"/>
+            <Action selector_logic="my_surface_AND_loop"         aas="ADEGHKNPQRST"/>
+            <Action selector_logic="my_boundary_AND_helix_start" aas="ADEIKLMNPQRSTVWY"/>
+            <Action selector_logic="my_boundary_AND_helix"       aas="ADEIKLMNQRSTVWY"/>
+            <Action selector_logic="my_boundary_AND_sheet"       aas="DEFIKLMNQRSTVWY"/>
+            <Action selector_logic="my_boundary_AND_loop"        aas="ADEFGIKLMNPQRSTVWY"/>
+            <Action selector_logic="my_core_AND_helix_start"     aas="AFILMPVWY"/>
+            <Action selector_logic="my_core_AND_helix"           aas="AFILMVWY"/>
+            <Action selector_logic="my_core_AND_sheet"           aas="FILVWY"/>
+            <Action selector_logic="my_core_AND_loop"            aas="AFGILMPVWY"/>
+            <Action selector_logic="my_helix_cap"                aas="DNST"/>
+            <Action selector_logic="end_dummy"                   aas="AEKQR"/>
+        </DesignRestrictions>
+
+
+        <IncludeCurrent name="IC" />
+        <LimitAromaChi2 name="limitchi2" chi2max="110" chi2min="70" include_trp="True" />
+        <ExtraRotamersGeneric name="ex1_ex2" ex1="1" ex2aro="1" />
+
+        <DisallowIfNonnative name="disallow_GLY" resnum="0" disallow_aas="G" />
+        <DisallowIfNonnative name="disallow_PRO" resnum="0" disallow_aas="P" />
+
+        ProhibitSpecifiedBaseResidueTypes name="bidentate_bb_noP" base_types="PRO" selector="bidentate_res_bb" />
+
+        <OperateOnResidueSubset name="design_E_bin" selector="Ebin">
+            <RestrictAbsentCanonicalAASRLT aas="G"/>
+        </OperateOnResidueSubset>
+
+        <OperateOnResidueSubset name="design_G_bin" selector="Gbin">
+            <RestrictAbsentCanonicalAASRLT aas="EG"/>
+        </OperateOnResidueSubset>
+
+        <OperateOnResidueSubset name="design_core" selector="not_core">
+            <PreventRepackingRLT/>
+        </OperateOnResidueSubset>
+        <OperateOnResidueSubset name="design_boundary" selector="not_boundary">
+            <PreventRepackingRLT/>
+        </OperateOnResidueSubset>
+        <OperateOnResidueSubset name="design_surface" selector="not_surface">
+            <PreventRepackingRLT/>
+        </OperateOnResidueSubset>
+
+        # to freeze sandwiched repeats when designing terminal repeats
+        <OperateOnResidueSubset name="not_tails_surf_cst" selector="not_tails_surface" >
+            <PreventRepackingRLT/>
+        </OperateOnResidueSubset>
+
+        OperateOnResidueSubset name="repack_bidentate_res_sc" selector="bidentate_res_sc" >
+            RestrictToRepackingRLT/>
+        /OperateOnResidueSubset>
+
+        <OperateOnResidueSubset name="restrict_PRO_GLY" selector="pro_and_gly_positions">
+            <RestrictToRepackingRLT/>
+        </OperateOnResidueSubset>
+
+
+        <OperateOnResidueSubset name="design_surface_hydrophobic" selector="surface_hydrophobic">
+            <RestrictAbsentCanonicalAASRLT aas="AEKQR"/>
+        </OperateOnResidueSubset>
+
+        <OperateOnResidueSubset name="repack_surface_nei" selector="surface_nei">
+            <RestrictToRepackingRLT/>
+        </OperateOnResidueSubset>
+
+        <OperateOnResidueSubset name="freeze_surface" selector="non_surface_hydrophobic_and_nei">
+            <PreventRepackingRLT/>
+        </OperateOnResidueSubset>
+
+
+
+
+
+    </TASKOPERATIONS>
+
+
+    <MOVERS>
+
+        <Idealize name="idealize" atom_pair_constraint_weight="0.005" coordinate_constraint_weight="0.01" fast="false" report_CA_rmsd="true" impose_constraints="true" constraints_only="false"/> # sometimes loop closure creates cart problems
+        <RepeatPropagationMover name="propagate" numb_repeats="%%num_repeats%%" extract_repeat_info_from_pose="true" start_pose_numb_repeats="%%num_repeats%%" start_pose_length="%%length%%" ideal_repeat="false"/>
+
+        <MutateResidue name="mut_gly_to_ala" residue_selector="gly" new_res="ALA" />
+
+        <AddConstraints name="add_coord_csts" >
+            <CoordinateConstraintGenerator name="coord_csts" native="0" sd="1.0" sidechain="0" ca_only="0" />
+        </AddConstraints>
+        <RemoveConstraints name="rm_coord_csts" constraint_generators="coord_csts" />
+
+
+        <AddCompositionConstraintMover name="surface_helix_aacomp" filename="%%params%%/surface_helix.comp" selector="my_surface_AND_helix" /> 
+        <AddCompositionConstraintMover name="core_boundary_helix_aacomp" filename="%%params%%/core_boundary_helix.comp" selector="my_core_boundary_helix" />
+        <AddCompositionConstraintMover name="ncap_pro_aacomp" filename="%%params%%/ncap_pro.comp" selector="my_helix_start" /> 
+        <AddCompositionConstraintMover name="Ebin_aacomp" filename="%%params%%/design_Ebin_composition.comp" selector="Ebin"/> 
+        <AddCompositionConstraintMover name="Gbin_aacomp" filename="%%params%%/design_Gbin_composition.comp" selector="Gbin"/> 
+        <AddCompositionConstraintMover name="non_EGbin_aacomp" filename="%%params%%/design_ban_gly_composition.comp" selector="non_EGbin"/> 
+        AddCompositionConstraintMover name="ban_bidentate_pro_aacomp" filename="%%params%%/design_ban_pro_composition.comp" selector="bidentate_res_bb"/> 
+        <ClearCompositionConstraintsMover name="clear_aacomp_cst" />
+
+        <VirtualRoot name="add_virtual_root" removable="true" remove="false" />
+        <VirtualRoot name="remove_virtual_root" removable="true" remove="true" />
+
+        RepeatPropagationMover name="propagate" start_pose_length="%%length%%" start_pose_numb_repeats="5" extract_repeat_info_from_pose="true" numb_repeats="5"/>  
+        <RepeatProteinRelax name="setup_sym" numb_repeats="%%num_repeats%%" scorefxn="beta_relax_sym" loop_cutpoint_mode="false" minimize="false" relax_iterations="1" 
+            cartesian="true" modify_symmetry_and_exit="true" remove_symmetry="false" />
+        <RepeatProteinRelax name="remove_sym" numb_repeats="%%num_repeats%%" scorefxn="beta_relax_sym" loop_cutpoint_mode="false" minimize="false" relax_iterations="1"
+            cartesian="true" modify_symmetry_and_exit="true" remove_symmetry="true" />
+
+        <SymMinMover name="hardmin_cart" scorefxn="beta_relax_sym_cart" type="lbfgs_armijo_nonmonotone" tolerance="0.0001" chi="1" bb="1" bondangle="1" bondlength="1" jump="all" cartesian="1"/>
+
+
+
+        <FastRelax name="relax" scorefxn="beta_relax_sym" repeats="1" relaxscript="%%params%%/MonomerDesign2019.txt"/>
+        <FastRelax name="relax_cart" scorefxn="beta_relax_sym_cart" repeats="1" relaxscript="%%params%%/MonomerDesign2019.txt"/>
+
+        <FastRelax name="relax_final" scorefxn="beta_relax" repeats="1" batch="false" ramp_down_constraints="false" cartesian="false" bondangle="false" bondlength="false" min_type="dfpmin_armijo_nonmonotone" task_operations="IC,limitchi2,ex1_ex2"/>
+        FastRelax name="relax_final" scorefxn="beta_relax" repeats="1" batch="false" ramp_down_constraints="false" cartesian="false" bondangle="false" bondlength="false" min_type="dfpmin_armijo_nonmonotone" task_operations="IC,limitchi2,ex1_ex2,prune_bad_rotamers,prune_buried_unsats"/>
+
+        <FastDesign name="FastDesign_cart" scorefxn="beta_design_sym_cart" repeats="1" task_operations="IC,limitchi2,ex1_ex2,restrict_PRO_GLY,design_E_bin,design_G_bin,layer_design" batch="false" ramp_down_constraints="false" cartesian="True" bondangle="false" bondlength="false" min_type="dfpmin_armijo_nonmonotone" relaxscript="%%params%%/MonomerDesign2019.txt"/>
+
+    </MOVERS>
+
+
+    <FILTERS>
+
+        <Time name="timed"/>
+
+
+
+        <ScoreType name="total_score" scorefxn="beta" score_type="total_score" threshold="0" confidence="0" />
+        <ResidueCount name="nres" confidence="0" />
+        <ResidueCount name="nres_core" residue_selector="core" confidence="0" />
+        <CalculatorFilter name="score_norm" confidence="0" equation="SCORE/NRES" threshold="3" >
+            <Var name="SCORE" filter="total_score" />
+            <Var name="NRES" filter_name="nres" />
+        </CalculatorFilter>
+
+        # burial_cutoff is set arbitrarily high so that every atom deeper than 5.5 is considered buried
+        BuriedUnsatHbonds name="vbuns_all_heavy" residue_selector="second_repeat" report_all_heavy_atom_unsats="true" scorefxn="beta" ignore_surface_res="false" print_out_info_to_pdb="true" atomic_depth_selection="5.5" burial_cutoff="1000" confidence="0" />
+        # This is the same as buns_all_heavy_ball but using atomic_depth to only select the surface
+        BuriedUnsatHbonds name="sbuns_all_heavy_ball" residue_selector="second_repeat" report_all_heavy_atom_unsats="true" scorefxn="beta" ignore_surface_res="true" residue_surface_cutoff="20.0" print_out_info_to_pdb="true" dalphaball_sasa="1" probe_radius="1.1" atomic_depth_selection="5.5" atomic_depth_deeper_than="false" confidence="0" />
+
+
+        <Geometry name="geometry" omega="165" cart_bonded="15" start="1" end="9999" count_bad_residues="false" confidence="0"/>
+        <ResidueCount name="percent_hydrophobic" max_residue_count="70" min_residue_count="25" residue_types="PHE,ILE,LEU,MET,VAL,TRP,TYR" count_as_percentage="true" confidence="0"/>
+        <SSShapeComplementarity name="ss_sc" verbose="1" loops="1" helices="1" min_sc="0.65" confidence="0" />
+        <PackStat name="packstat" threshold="0.6" repeats="5" confidence="0" />
+
+        EnergyPerResidue name="omega_per_res" scorefxn="beta" score_type="omega" whole_protein="1" energy_cutoff="0.5" confidence="0"/>
+        EnergyPerResidue name="rama_per_res" scorefxn="beta" score_type="rama_prepro" whole_protein="1" energy_cutoff="0.5" confidence="0"/>
+        EnergyPerResidue name="total_per_res" scorefxn="beta" score_type="total_score" whole_protein="1" energy_cutoff="0.5" confidence="0"/>
+
+        <ScoreType name="rama_prepro_score" scorefxn="beta" score_type="rama_prepro" threshold="0" confidence="0" />
+        <CalculatorFilter name="rama_per_res" confidence="0" equation="RAMA_SCORE/NRES" threshold="3" >
+            <Var name="RAMA_SCORE" filter="rama_prepro_score" />
+            <Var name="NRES" filter_name="nres" />
+        </CalculatorFilter>
+
+        <ScoreType name="omega_score" scorefxn="beta" score_type="omega" threshold="0" confidence="0" />
+        <CalculatorFilter name="omega_per_res" confidence="0" equation="OMEGA_SCORE/NRES" threshold="3" >
+            <Var name="OMEGA_SCORE" filter="omega_score" />
+            <Var name="NRES" filter_name="nres" />
+        </CalculatorFilter>
+
+    </FILTERS>
+
+
+
+    <PROTOCOLS>
+
+        <Add filter="timed" />
+
+        <Add mover="idealize" />
+        <Add mover="propagate" />
+
+
+        <Add mover="setup_sym"/>        
+
+       
+        # mutate gly to ala (or bin selector can't recognize gly's Ebin)
+        Add mover="mut_gly_to_ala"/>  # no need for this, as now I fix gly position in the beginning
+
+        Add mover="add_virtual_root"/>     
+        <Add mover="add_coord_csts"/>
+
+        <Add mover="surface_helix_aacomp"/>
+        <Add mover="core_boundary_helix_aacomp"/>
+           Add mover="ncap_pro_aacomp"/>
+        <Add mover="Ebin_aacomp"/>
+        <Add mover="Gbin_aacomp"/>
+        <Add mover="non_EGbin_aacomp"/>
+        Add mover="ban_bidentate_pro_aacomp"/>             
+
+        <Add mover="FastDesign_cart"/>
+
+        Add mover="remove_virtual_root"/>  
+        <Add mover="remove_sym"/>   
+
+	<Add mover="rm_coord_csts"/>
+
+        Add mover="relax_final"/>
+
+
+        <Add filter_name="total_score"/>
+        <Add filter_name="score_norm"/>
+        Add filter_name="vbuns_all_heavy"/>
+        Add filter_name="sbuns_all_heavy_ball"/>
+        <Add filter_name="geometry"/>
+        <Add filter_name="percent_hydrophobic"/>
+        <Add filter_name="ss_sc"/>
+        <Add filter_name="packstat"/>
+        <Add filter_name="omega_per_res"/>
+        <Add filter_name="rama_per_res"/>
+
+        <Add filter="timed" />
+
+
+    </PROTOCOLS>
+
+
+    <OUTPUT />
+
+
+</ROSETTASCRIPTS>

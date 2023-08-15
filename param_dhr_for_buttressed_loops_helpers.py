@@ -586,10 +586,6 @@ def setup_repeat_pose(pose, numb_repeats_=4, base_repeat=2):
 
     if not base_repeat > 1:
         return False
-    # why? well, the base repeat should get the right context info from nbring repeats
-    # but note that with base_repeat>1 we probably can't use linmem_ig and there are other places in the code that
-    # assume that monomer 1 is the independent monomer. These should gradually be fixed. Let me (PB) know if you run into
-    # trouble.
 
     nres_protein = nrepeat * repeatlen
     pyrosetta.rosetta.core.pose.remove_upper_terminus_type_from_pose_residue( pose, pose.size() )
@@ -610,9 +606,6 @@ def setup_repeat_pose(pose, numb_repeats_=4, base_repeat=2):
     if not pyrosetta.rosetta.core.pose.symmetry.is_symmetric(pose):
         return False
 
-    ### what is the purpose of this???
-    ###
-    ##TJ adding these to Phil's function
     base_offset = (base_repeat-1)*repeatlen
     """
     for i in range(0,nrepeat):
@@ -876,7 +869,7 @@ def _config_my_move_map(p, input_obj, include_neighbor=True, neighbor_dist=6.0):
 
 def fast_design_layer_relaxscript(p, sf, core_selector, boundary_selector, surface_selector, helix_ncap_selector=None,
                                     core_aa='ACDEFGHIKLMNPQRSTVWY', boundary_aa='ACDEFGHIKLMNPQRSTVWY', surface_aa='ACDEFGHIKLMNPQRSTVWY', helix_ncap_aa='DNST', rmsd_check_resids=[], include_neighbor=True, neighbor_dist=6.0,
-                                    relaxscript='MonomerDesign2019.txt'):
+                                    relaxscript='/home/jianghl/software/Rosetta/main/database/sampling/relax_scripts/MonomerDesign2019.txt'):
 
     pose = p.clone()
     fd = pyrosetta.rosetta.protocols.denovo_design.movers.FastDesign()
@@ -1237,6 +1230,194 @@ def add_caps_n_filter_direction( pose,
             return sorted(pose_ncap_list, key=lambda x:x[1]+x[3], reverse=True)
     
 
+def add_caps_n_filter_direction_w_control( pose,
+                                sf,
+                                sf_farep,
+                                sf_farep_cutoff,
+                                  c_cap_phipsi_file,
+                                  n_cap_phipsi_file,
+                                h1_len = 20, 
+                                h2_len = 20, 
+                                cap_search_range = 4,
+                                num_res_for_helix_center_com = 4,
+                                min_cos_angle = 0.8,
+                                ccap_min_cos_angle = 10,
+                                ccap_direction = 0, # 0: no direction preference, 1: left, -1: right
+                                ncap_min_cos_angle = 10,
+                                ncap_direction = 0, # 0: no direction preference, 1: left, -1: right
+                                min_helix_height_diff = 4.0,
+                                max_helix_height_diff = 7.0):
+
+    '''
+    Difference from add_caps_n_filter_direction:
+        1. min_cos_angle is specified indivdually for ccap and ncap
+        2. allowing specifying of cap direction with respect to the Z-axis+cap_com plane 
+            (so I can select only left, or only right pointing caps)
+
+
+    CAUTION:
+        in this version, ncap is added to beginning of h1, ccap added to end of h2
+    
+    # check 1st-4th residues from each helix terminus for vector angles
+    
+    # also make sure the ccap is 'higher' than ncap so loop won't clash into ncap
+    
+    
+    # test values
+    cap_dir = 'capping_files'  # obsolete
+    h1_len, h2_len = 20, 20 ## this should be determined beforehand!!
+    cap_search_range = 4
+    num_res_for_helix_center_com = 4
+    min_cos_angle = 0.8 ## min cos value of vec(helix_center->capping res) and vec(helix_center-> Zaxis) ... to be optimized    
+    
+    '''
+
+
+    sf_cap = sf.clone()
+    sf_cap.set_weight(pyrosetta.rosetta.core.scoring.fa_rep, 0.2) # soft rep to encourage PRO packing for capping residues
+    #if aacomp_cap_pro_file != "-1":
+    #    sf_cap.set_weight(pyrosetta.rosetta.core.scoring.aa_composition, 1) # turn on aacomp
+
+
+    # ccap (end of 1st helix)
+    #c_cap_phipsi = read_torsion_file('{}{}/{}/angle_ccap_ank1_4aa_SKGA'.format(workdir, output_dir, cap_dir))
+    c_cap_phipsi = read_torsion_file(c_cap_phipsi_file)
+    #print(c_cap_phipsi)
+
+    pose_ccap_list = []
+    for i in range(cap_search_range):
+        pose_ccap = pose.clone()
+        # ccap to be put at the end of h2
+        anchor_phipsi = [[pose_ccap.phi(h1_len+h2_len-1-i),pose_ccap.psi(h1_len+h2_len-1-i)]]
+        ccap = generate_cap(anchor_phipsi+c_cap_phipsi[0][0], sf_cap, aa='A', insert_Pro=False, insert_GLy=True, aacomp_cap_pro_file="-1")
+        pose_ccap.delete_residue_range_slow(h1_len+h2_len-1-i, h1_len+h2_len)
+        pose_ccap = insert_c_cap(pose_ccap, h1_len+h2_len-2-i, ccap)
+        #pose_ccap.dump_pdb('{}{}/{}/{}_ccap_-{}.pdb'.format(workdir, output_dir, cap_dir, input_pre, i))
+
+        helix_center_reslist = [h1_len+h2_len-i+1-x for x in range(num_res_for_helix_center_com)]   
+        #print(helix_center_reslist)
+        com_helix_center = np.array(get_com(pose_ccap, helix_center_reslist))
+        #print(com_helix_center)
+
+        cap_reslist = [h1_len+h2_len-i+2]
+        com_cap = np.array(get_com(pose_ccap, cap_reslist))    
+        vec_hc_cap = com_cap - com_helix_center
+        # simple hack of projection of vec_hc_cap on XY plane (i.e. perpendicular to Z-axis)
+        vec_hc_cap[2] = 0
+        unit_vec_hc_cap = vec_hc_cap / np.linalg.norm(vec_hc_cap)
+        vec_hc_z = np.array([0-com_helix_center[0], 0-com_helix_center[1], 0])
+        unit_vec_hc_z = vec_hc_z / np.linalg.norm(vec_hc_z)
+
+        cos_angle = np.dot(unit_vec_hc_cap, unit_vec_hc_z)   
+
+        #print('i, ccap_cos_angle: ', i, cos_angle)
+
+        if ccap_min_cos_angle > 1:
+            ccap_min_cos_angle = min_cos_angle
+
+        if cos_angle >= ccap_min_cos_angle:
+
+            # now check cap direction relative to the Z-axis+cap_com plane
+            if ccap_direction != 0:
+                # computing determinant of the matrix from stacking 3 vectors:
+                #    com_helix_center, com_helix_center projected on XY plane, com_cap
+                #    if det * cap_direction >= 0, direction is correct
+                com_helix_center_xy = np.copy(com_helix_center)
+                if com_helix_center[2] != 0:
+                    com_helix_center_xy[2] = 0
+                else:
+                    com_helix_center_xy[2] = com_helix_center[2] - 1 # incase com_helix_center happens to be in XY plane
+                m = np.stack((com_helix_center, com_helix_center_xy, com_cap))
+                if np.linalg.det(m) * ccap_direction >= 0:
+                    pose_ccap_list.append([pose_ccap, cos_angle, i])
+            else:
+                pose_ccap_list.append([pose_ccap, cos_angle, i])
+
+
+    #print(pose_ccap_list)
+
+    if len(pose_ccap_list) == 0:
+        #print('Warning: no ccap satisfies the min_cos_angle cutoff, stop checking ncaps ...') 
+        return []
+
+    else:
+        # ncap (start of 2nd helix, after ccap insertion)
+        #n_cap_phipsi = read_torsion_file('{}{}/{}/angle_ncap_ank1_4aa_RTPL'.format(workdir, output_dir, cap_dir))
+        n_cap_phipsi = read_torsion_file(n_cap_phipsi_file)
+        #print(n_cap_phipsi)
+
+
+        pose_ncap_list = []
+        for c_id in range(len(pose_ccap_list)):
+            for i in range(cap_search_range):
+                pose_ncap = pose_ccap_list[c_id][0].clone()
+                
+                # use the 2nd res phipsi in 2nd helix as anchor as the terminal res has only psi
+                anchor_phipsi = [[pose_ncap.phi(2+i),pose_ncap.psi(2+i)]]   
+                ncap = generate_cap(n_cap_phipsi[0][0]+anchor_phipsi, sf_cap, aa='A', insert_Pro=True, insert_GLy=False, aacomp_cap_pro_file="-1")
+                pose_ncap.delete_residue_range_slow(1, 1+i)
+                #pose_ncap = insert_n_cap(pose_ncap, pose_ccap_h1_len, ncap)  
+                pose_ncap = prepend_n_cap(pose_ncap, ncap)
+                #pose_ncap.dump_pdb('{}{}/{}/{}_ccap_-{}_ncap_+{}.pdb'.format(workdir, output_dir, cap_dir, input_pre, c_id, i))
+
+
+                helix_center_reslist = [i+1+x for x in range(num_res_for_helix_center_com)]  
+                #print(helix_center_reslist)
+                com_helix_center = np.array(get_com(pose_ncap, helix_center_reslist))
+                #print(com_helix_center)
+
+                cap_reslist = [1]
+                com_cap = np.array(get_com(pose_ncap, cap_reslist))    
+                vec_hc_cap = com_cap - com_helix_center
+                # simple hack of projection of vec_hc_cap on XY plane (i.e. perpendicular to Z-axis)
+                vec_hc_cap[2] = 0
+                unit_vec_hc_cap = vec_hc_cap / np.linalg.norm(vec_hc_cap)
+                vec_hc_z = np.array([0-com_helix_center[0], 0-com_helix_center[1], 0])
+                unit_vec_hc_z = vec_hc_z / np.linalg.norm(vec_hc_z)
+
+                cos_angle = np.dot(unit_vec_hc_cap, unit_vec_hc_z)   
+                #print('i, ncap_cos_angle: ',i, cos_angle)
+
+                # check the height of ccap and ncap
+                #      ncap_size - ncap_trim_res_num + original_h1 + original_h2 - ccap_trim_res_num + 2 helical res before capping res
+                ccap_z = pose_ncap.residue(len(n_cap_phipsi[0][0])-i-2+h1_len+h2_len-pose_ccap_list[c_id][2]+2).xyz('CA')[2]  
+                ncap_z = pose_ncap.residue(3).xyz('CA')[2]
+                #print('ccap resid: {} ncap resid: {}'.format(h1_len+h2_len-pose_ccap_list[c_id][2]+2, 1))
+                if np.abs(ccap_z - ncap_z) < min_helix_height_diff or np.abs(ccap_z - ncap_z) > max_helix_height_diff:
+                    continue
+                
+                if ncap_min_cos_angle > 1:
+                    ncap_min_cos_angle = min_cos_angle
+
+                if cos_angle >= ncap_min_cos_angle:
+
+                    #TODO: copy ccap_direction code here for ncap_direction filtering
+
+                    farep_score = sf_farep(pose_ncap)
+                    #print(farep_score)
+                    if farep_score <= sf_farep_cutoff:
+                        new_repeat_len = len(n_cap_phipsi[0][0])-i-1+h1_len+h2_len-pose_ccap_list[c_id][2]+len(c_cap_phipsi[0][0])-2
+                        # add ncap to the 2nd repeat to prep for propagation
+                        pose_ncap.delete_residue_range_slow(new_repeat_len+1, new_repeat_len+1+i)
+                        pose_ncap = insert_n_cap(pose_ncap, new_repeat_len, ncap)
+                        pose_ncap_list.append([pose_ncap, pose_ccap_list[c_id][1], pose_ccap_list[c_id][2], cos_angle, i, new_repeat_len])
+
+        if len(pose_ncap_list) == 0:
+            #print('Warning: no ncap satisfies the min_cos_angle cutoff, no good capped scaffold for loop sampling ...') 
+            return []
+        else:
+            #for n_id in range(len(pose_ncap_list)):
+                #pose_ncap_list[n_id][0].dump_pdb('{}{}/{}/{}_ccap_-{}_ncap_+{}.pdb'.format(workdir, output_dir, cap_dir, input_pre, \
+                #                                                            pose_ncap_list[n_id][2], pose_ncap_list[n_id][4]))
+                #print('ccap_id: %d  ccap_cos: %.3f  ncap_id: %d  ncap_cos: %.3f' % (pose_ncap_list[n_id][2], pose_ncap_list[n_id][1], \
+                #                                                                    pose_ncap_list[n_id][4], pose_ncap_list[n_id][3]))
+
+            #print('best ccap: {}'.format(sorted(pose_ccap_list, key=lambda x:x[1], reverse=True)[0][2]))    
+            #print('best ncap: {}'.format(sorted(pose_ncap_list, key=lambda x:x[1], reverse=True)[0][4]))   
+            
+            #return [x[0] for x in pose_ncap_list]
+            return sorted(pose_ncap_list, key=lambda x:x[1]+x[3], reverse=True)
+
 
 def add_caps_n_filter_direction_for_scaffold( pose,
                                 sf,
@@ -1515,7 +1696,6 @@ def compute_motifscore_within_pose(pose, reslist1=[], reslist2=[], motif_dist_cu
             #    print(res1, res2, motifscore)
             
     return -1*total_motifscore / pose.size()
-
 
 def find_loopless_dhr_chains(pose, breakcutoff=1.5):
     chains = []

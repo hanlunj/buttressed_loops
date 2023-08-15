@@ -8,8 +8,9 @@ import copy
 from sklearn.cluster import KMeans, MiniBatchKMeans
 
 import time
+
 from param_dhr_for_buttressed_loops_helpers import *
-    
+
 
 
 def scan_new_geometric_param_list_for_param_poses(param_poses, param_list, param_name='',
@@ -115,6 +116,7 @@ def filter_param_poses_by_ss_degree(param_poses, helices=[], worst_ss_degree_cut
     return new_param_poses
 
 
+
 def filter_param_poses_by_core_residue_percentage(param_poses, num_repeats=4, percentage_cutoff=0.28, 
                                                     core_cutoff=5.2, helix_only=False, debug=False):
     new_param_poses = []
@@ -179,21 +181,7 @@ def filter_param_poses_by_helical_cap_com_dist(param_poses, helices=[], dist_cut
 
 
             
-#
-#  TODOS
-#
-#  post cap farep (maybe not for now --- will over filter due to cap motif clashes)
-#
-###################
-#
-#  Future TODOS
-#
-#  double check centroid residue generation (compare w/ remodel)
-#  silent file output
-#  update motifscore to Will's
-#  speed up
-#  multiprocessor for hyak
-#
+
 def build_param_dhrs(
     sf,
     sf_sym,
@@ -202,8 +190,8 @@ def build_param_dhrs(
     
     h1_len=20, #    length of h1 in each repeat
     r_z1_list=list(np.arange(0,359.999,60)), #      'self-rotation degree' of h1 about the Z axis
-    r_r1_list=[0], #       rotation degree of h1 about the radius line
-    r_t1_list=[0], #       rotation degree of h1 about the tangent line
+    r_x1_list=[0], #       rotation degree of h1 about the radius line
+    r_y1_list=[0], #       rotation degree of h1 about the tangent line
     t_x1_list=[30], #      (radius) translation of h1 along X axis
 
     h2_len=20, #    length of h2 in each repeat
@@ -213,6 +201,8 @@ def build_param_dhrs(
     h1h2_term_phi_range_degree = [70,110], # range of angle between h1_cterm_com->h2_nterm_com and h1
     h1h2_term_theta_range_degree = [-30, 30],     # rotation angle of h2 around h1, starts (when=0) on X axis
     h2_cterm_perturb_radius = 1.5,    # max distance of deviation of h2_cterm_com from initial position
+    h2_cterm_phi_range_degree = [0,0],
+    h2_cterm_theta_range_degree = [0,0], 
     num_trial_h2_nterm = 10,     #   number of trials for placing nterm and cterm of h2
     num_trial_h2_cterm = 10,    #   number of trials for placing nterm and cterm of h2
     num_top_h2 = 5, # keep this number of h2 sampled for each h1 (through clustering)
@@ -233,7 +223,10 @@ def build_param_dhrs(
     dist_r1h1_r2h1_nterm_list=[-1],
     handedness=-1,
     r_zr_list=[20], # (remodel's twist) rotation degree of r2 from r1 about Z axis
-    r_hr_list=[0], #  (Kobe's repeat twist) rotation degree of r2 from r1 about intra-dhr helical axis (r1's Y)
+    r_xr_list=[0], #  rotation degree of r2 from r1 about X axis
+    r_yr_list=[0], #  Y axis, (Kobe's repeat twist) rotation degree of r2 from r1 about intra-dhr helical axis (r1's Y)
+    t_xr_list=[0], #      (rise) translation of repeat2 (r2) from r1 along X axis    
+    t_yr_list=[0], #      (rise) translation of repeat2 (r2) from r1 along Y axis    
     t_zr_list=[0], #      (rise) translation of repeat2 (r2) from r1 along Z axis    
     
 
@@ -257,15 +250,27 @@ def build_param_dhrs(
     max_helix_height_diff=7.0,
     min_cos_angle=0.85,
     min_cos_angle_scaffold=0.5,    
+    ccap_min_cos_angle = 10, # only in effect if <=1 
+    ccap_direction = 0, # 0: no direction preference, 1: left, -1: right
+    ncap_min_cos_angle = 10, # only in effect if <=1
+    ncap_direction = 0, # 0: no direction preference, 1: left, -1: right
 
-    output_params_file = 'params.dat',
+    output_params_file='params.dat',
+
+    r1_checkpoint_frequency=0,
     
     workdir='./',
-    c_cap_phipsi_file='cap_files/angle_ccap_ank1_4aa_SKGA',
-    n_cap_phipsi_file='cap_files/angle_ncap_ank1_4aa_RTPL',
+    c_cap_phipsi_file='cap_files/angle_ccap.dat',
+    n_cap_phipsi_file='cap_files/angle_ncap.dat',
     output_dir='DHR_scan',
+
+    output_silent=False,
+    output_silent_prefix='out',
+    max_num_pose_per_silent_file=-1,
     
-    suppress_dhr_output = False,
+    suppress_dhr_output=False,
+
+    add_short_loops=False,
     
     debug=False,
     ):
@@ -274,8 +279,8 @@ def build_param_dhrs(
     
         h1_len:    length of helix1 (h1) in each repeat
         r_z1:      'self-rotation degree' of h1 about the Z axis
-        r_r1:       rotation degree of h1 about the radius line (X axis)
-        r_t1:       rotation degree of h1 about the tangent line (Y axis)
+        r_x1:       rotation degree of h1 about the radius line (X axis)
+        r_y1:       rotation degree of h1 about the tangent line (Y axis)
         t_x1:      (radius) translation of h1 along X axis
         
         h2_len:    length of h2 in each repeat
@@ -285,7 +290,7 @@ def build_param_dhrs(
         r_r2:      rotation degree of h2 about h1
         
         r_zr:       (remodel's twist) rotation degree of r2 from r1 about Z axis
-        r_hr:       (Kobe's repeat twist) rotation degree of r2 from r1 about intra-dhr helical axis 
+        r_yr:       (Kobe's repeat twist) rotation degree of r2 from r1 about intra-dhr helical axis 
         t_zr:      (rise) translation of repeat2 (r2) from r1 along Z axis        
         
     Full parametric terms (not all implemented here):
@@ -299,8 +304,47 @@ def build_param_dhrs(
         r_xr, r_yr, r_zr
 
     '''
+
+
     
     time_start = time.time()
+
+
+    if add_short_loops:
+
+        # TODO: check if database gets loaded every time when I define a xml_obj; if not, move this to the output stage
+        #       so i can better compute when the added loops are!
+        worst9mer_flank = 5
+        worst9mer_h1h2_range = [worst9mer_flank, h1_len+h2_len-worst9mer_flank] # hardcoded ballpark range for the short loop connecting h1-h2
+        worst9mer_h1h3_range = [worst9mer_flank, h1_len*2+h2_len-worst9mer_flank] # hardcoded ballpark range for the short loops connecting h1-h2 and h2-h3
+        
+        xml_objs = pyrosetta.rosetta.protocols.rosetta_scripts.XmlObjects.create_from_string(
+        f'''
+        <RESIDUE_SELECTORS>
+        <Index name="worst9mer_h1h2_selector" resnums="{worst9mer_h1h2_range[0]}-{worst9mer_h1h2_range[1]}"/>
+        <Index name="worst9mer_h1h3_selector" resnums="{worst9mer_h1h3_range[0]}-{worst9mer_h1h3_range[1]}"/>
+        </RESIDUE_SELECTORS>
+        <FILTERS>
+        <Geometry name="geometry" omega="150" cart_bonded="30" start="1" end="9999" count_bad_residues="false" confidence="1"/>
+        <worst9mer name="worst9mer_h1h2_a" threshold="0.4" only_helices="false" residue_selector="worst9mer_h1h2_selector"/>
+        <worst9mer name="worst9mer_h1h3_a" threshold="0.4" only_helices="false" residue_selector="worst9mer_h1h3_selector"/>
+        <worst9mer name="worst9mer_h" threshold="0.15" only_helices="true"/>
+        </FILTERS>
+        <MOVERS>
+        <ConnectChainsMover name="AddLoops_AB" loopLengthRange="2,4" RMSthreshold="0.4" resAdjustmentRangeSide1="-4,4" resAdjustmentRangeSide2="-4,4" chain_connections="[A+B,C,D,E,F,G,H,I,J]" allowed_loop_abegos="AGBA,ABBA,AGBBA,ABABA,ABBBA,AGABBA,ABBBBA,AGBBBA"/>
+        <ConnectChainsMover name="AddLoops_ABC" loopLengthRange="2,4" RMSthreshold="0.4" resAdjustmentRangeSide1="-4,4" resAdjustmentRangeSide2="-4,4" chain_connections="[A+B+C,D,E,F,G,H,I,J]" allowed_loop_abegos="AGBA,ABBA,AGBBA,ABABA,ABBBA,AGABBA,ABBBBA,AGBBBA"/>
+        <Idealize name="idealize" atom_pair_constraint_weight="0.005" coordinate_constraint_weight="0.01" fast="false" report_CA_rmsd="true" impose_constraints="true" constraints_only="false"/>
+        </MOVERS>
+        '''
+        )
+        connect_chain_AB_mover = xml_objs.get_mover("AddLoops_AB")
+        connect_chain_ABC_mover = xml_objs.get_mover("AddLoops_ABC")
+        idealize_mover = xml_objs.get_mover("idealize")
+        geometry_filter = xml_objs.get_filter("geometry")
+        worst9mer_h1h2_a_filter = xml_objs.get_filter("worst9mer_h1h2_a")
+        worst9mer_h1h3_a_filter = xml_objs.get_filter("worst9mer_h1h3_a")
+        worst9mer_h_filter = xml_objs.get_filter("worst9mer_h")
+
 
     sf_motif = sf.clone()
     for st in sf_motif.get_nonzero_weighted_scoretypes():
@@ -318,11 +362,12 @@ def build_param_dhrs(
         output_dir = output_dir[:-1]
     if output_dir[:5] == '/home':
         output_dir.replace(workdir, '')
-    os.system('rm -rf {}{}'.format(workdir, output_dir))
-    os.system('mkdir {}{}'.format(workdir, output_dir))
+    #os.system('rm -rf {}{}'.format(workdir, output_dir))
+    os.system('mkdir -p {}{}'.format(workdir, output_dir))
     #os.system('mkdir -p {}{}'.format(workdir, output_dir))
 
     mman_ = pyrosetta.rosetta.core.scoring.motif.MotifHashManager.get_instance()
+
     
     chain_ids = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
     
@@ -351,7 +396,7 @@ def build_param_dhrs(
 
     #h1.pose.dump_pdb('{}{}/h1_parent.pdb'.format(workdir, output_dir))
 
-    h1_list.append(ParamPose(template_pose_=h1.pose, params_={}))
+    h1_list.append(ParamPose(template_pose_=h1.pose, params_={'h1_len':h1_len}))
 
     # r_z1:      'self-rotation degree' of h1 about the Z axis
     h1_list = scan_new_geometric_param_list_for_param_poses(h1_list, r_z1_list, param_name='r_z1',
@@ -363,24 +408,24 @@ def build_param_dhrs(
             this_h1_total_param_combs['r_z1'] = this_num_of_params
 
     
-    # r_r1:       rotation degree of h1 about the radius line (X axis) (-: ccw, +: cw)
-    h1_list = scan_new_geometric_param_list_for_param_poses(h1_list, r_r1_list, param_name='r_r1',
+    # r_x1:       rotation degree of h1 about the radius line (X axis) (-: ccw, +: cw)
+    h1_list = scan_new_geometric_param_list_for_param_poses(h1_list, r_x1_list, param_name='r_x1',
                                rotation_axis=[1,0,0], radian=False)
     if debug:
-        this_num_of_params = len(r_r1_list)
+        this_num_of_params = len(r_x1_list)
         if this_num_of_params >= 1:
-            #print('r_r1: ', this_num_of_params)
-            this_h1_total_param_combs['r_r1'] = this_num_of_params
+            #print('r_x1: ', this_num_of_params)
+            this_h1_total_param_combs['r_x1'] = this_num_of_params
 
 
-    # r_t1:       rotation degree of h1 about the tangent line (Y axis) (-: ccw, +: cw)
-    h1_list = scan_new_geometric_param_list_for_param_poses(h1_list, r_t1_list, param_name='r_t1',
+    # r_y1:       rotation degree of h1 about the tangent line (Y axis) (-: ccw, +: cw)
+    h1_list = scan_new_geometric_param_list_for_param_poses(h1_list, r_y1_list, param_name='r_y1',
                                rotation_axis=[0,1,0], radian=False)
     if debug:
-        this_num_of_params = len(r_t1_list)
+        this_num_of_params = len(r_y1_list)
         if this_num_of_params >= 1:
-            #print('r_t1: ', this_num_of_params)
-            this_h1_total_param_combs['r_t1'] = this_num_of_params
+            #print('r_y1: ', this_num_of_params)
+            this_h1_total_param_combs['r_y1'] = this_num_of_params
 
 
     # t_x1:      (radius) translation of h1 along X axis 
@@ -399,8 +444,8 @@ def build_param_dhrs(
             total_param_combs *= this_h1_total_param_combs[this_param]
     if debug:
         print('num of h1: ', len(h1_list))
-        for h1_id, this_h1 in enumerate(h1_list):
-            print(this_h1.params)
+        #for h1_id, this_h1 in enumerate(h1_list):
+        #    print(this_h1.params)
         #    this_h1.pose.dump_pdb('{}{}/h1_{}.pdb'.format(workdir, output_dir, h1_id))
 
     
@@ -418,16 +463,68 @@ def build_param_dhrs(
     h2_dummy = ParamHelix(helix_len_=h2_len, residue_name3_=residue_name3)
     h2_dummy.generate_pose()
 
+
     this_h2_total_param_combs = {}
 
 
     r1_list = []
+    # initialize checkpoint mechanism
+    if sample_h2 and r1_checkpoint_frequency > 0:
+        cp_h1_index_list = []
+        checkpoint_dir = '{}{}/checkpoints/'.format(workdir, output_dir)
+        if not os.path.exists(checkpoint_dir):
+            os.mkdir(checkpoint_dir)
+        elif os.path.exists(checkpoint_dir+'DONE'):
+            # if there is a file named 'DONE', then the simulation has finished!
+            if debug:
+                print('ParamDHR generation has already completed! Stopping now...')
+            return None
+        elif os.path.exists(checkpoint_dir+'r1.list'):
+            # read the existing checkpoints and start from there
+            if debug:
+                print('Reading the checkpoints ...')
+                time_cp_start = time.time()
+
+            with open(checkpoint_dir+'r1.list','r') as fin_cp:
+                for line in fin_cp.readlines():
+                    cp_r1_name = line.strip() 
+                    if not os.path.exists(checkpoint_dir+cp_r1_name+'.pdb') or not os.path.exists(checkpoint_dir+cp_r1_name+'.params'):
+                        print('Error in loading checkpoint {}, skip this one ...'.format(line.strip()))
+                    else:
+                        cp_h1_index_list.append(int(cp_r1_name.split('_')[0])) # index of h1, so do not ever sort h1_list in any way
+                        cp_r1 = ParamPose(pyrosetta.pose_from_file(checkpoint_dir+cp_r1_name+'.pdb'),params_={})
+                        with open(checkpoint_dir+cp_r1_name+'.params','r') as fin_params:
+                            for line in fin_params.readlines():
+                                p, val = line.strip().split(':')
+                                if p in ['h1_len', 'h2_len', 'handedness', 'h1_index']:
+                                    cp_r1.params[p] = int(val)
+                                    #print(p, val)
+                                else:
+                                    cp_r1.params[p] = float(val)
+                        #if cp_r1.params['h1_index'] not in cp_h1_index_list:
+                        #    cp_h1_index_list.append(int(cp_r1.params['h1_index']))
+                        r1_list.append(cp_r1)
+
+            cp_h1_index_list = list(set(cp_h1_index_list))
+
+            if debug:
+                print('Finished reading {} checkpoints for h1s: '.format(len(r1_list)), cp_h1_index_list)
+                time_cp_end = time.time()
+                print('Total checkpoints reading time: ', time_cp_end - time_cp_start)
+
+
+
     for h1_id, this_h1 in enumerate(h1_list):
+
+        # add h1_index to params for checkpoint tracing
+        this_h1.params['h1_index'] = h1_id
+        if debug:
+            print('now looking at h1_index: ', h1_id)
 
         this_h1_r1_list = []
         
         # record the transform from flipped h1 to current h1, use this to transform h2 to h1's position
-        h1_dummy = ParamPose(h1.pose)
+        h1_dummy = ParamPose(h1.pose, params_={})
         h1_dummy.set_axis_vec_and_theta(np.array([0,0,1]), this_h1.params['r_z1'], radian=False)
         h1_dummy.rotate(rotate_by_R=False)
         h1_R, h1_t = compute_rigid_3D_transform_for_poses(h1_dummy.pose, list(range(1,this_h1.pose.size()+1)), 
@@ -440,6 +537,16 @@ def build_param_dhrs(
 
         if sample_h2:
             # generate h2 by sampling conformations of h2 around h1
+
+            # checkpoints
+            if r1_checkpoint_frequency > 0:
+
+                # skip this h1 if already exists in checkpoints
+                if h1_id in cp_h1_index_list:
+                    if debug:
+                        print('skip h1 {} as its r1s are already read from checkpoints...'.format(h1_id))
+                    continue
+
                 
             # range of angle between h1_cterm_com->h2_nterm_com and h1
             # so that h2_nterm_com is a resonable position and not clashing into h1
@@ -456,13 +563,16 @@ def build_param_dhrs(
             h1h2_term_theta_range = [np.radians(x) for x in h1h2_term_theta_range_degree]
 
 
-            h2_start = ParamPose(h2_dummy.pose)
+            h2_start = ParamPose(h2_dummy.pose, params_={'h2_len':h2_len})
             h2_start.R = h1_R
             h2_start.rotate(rotate_by_R=True)
             h2_start.t = h1_t
             h2_start.translate()
 
             h2_start_nterm_com = get_com(h2_start.pose, list(range(1,4)))
+
+            #if debug:
+            #    print('h2_start params', h2_start.params)
 
 
             for trial_h2_nterm in range(num_trial_h2_nterm):
@@ -496,10 +606,28 @@ def build_param_dhrs(
                     print(_pml_cmd_for_com(h2_nterm_com_xyz, 'h2_nterm_com_xyz'))
                 '''
                 
+
+
                 # build h2, sample h2 orientation w/ const until output accepted
+
+                # prepare h2_cterm_phi/psi_range if they are specified
+                if h2_cterm_phi_range_degree[0] != 0 and h2_cterm_phi_range_degree[1] != 0 and \
+                    h2_cterm_theta_range_degree[0] != 0 and h2_cterm_theta_range_degree[1] != 0:
+                    # project phi for uniform sampling, the same way as to h1h2_term_phi_proj_range
+                    h2_cterm_phi_range = [np.radians(x) for x in h2_cterm_phi_range_degree]
+                    h2_cterm_phi_proj_range = []
+                    for this_cterm_phi_temp in h2_cterm_phi_range:
+                        assert(this_cterm_phi_temp<=np.pi)
+                        h2_cterm_phi_proj_range.append(np.cos(this_cterm_phi_temp))
+                    h2_cterm_phi_proj_range = sorted(h2_cterm_phi_proj_range)
+
+                    h2_cterm_theta_range = [np.radians(x) for x in h2_cterm_theta_range_degree]
+
                 for trial_h2_cterm in range(num_trial_h2_cterm):      
                     
                     h2 = ParamPose(h2_start.pose, copy.deepcopy(h2_start.params))
+                    #if debug:
+                    #    print('h2_init param', h2.params)
 
                     h2.params['h1h2_term_com_dist'] = h1h2_term_com_dist
                     h2.params['h2_nterm_theta'] = np.degrees(this_theta)
@@ -520,9 +648,24 @@ def build_param_dhrs(
                     #
                     h2_cterm_com = get_com(h2.pose, list(range(h2.pose.size()-3,h2.pose.size()+1)))
                     h2_nc_dist = np.linalg.norm(h2_cterm_com - h2_nterm_com)
-                    h2_cterm_sphere_point, this_cterm_theta, this_cterm_phi = sample_point_on_sphere_surface([0,2*np.pi], 
+                    
+                    if h2_cterm_phi_range_degree[0] != 0 and h2_cterm_phi_range_degree[1] != 0 and \
+                        h2_cterm_theta_range_degree[0] != 0 and h2_cterm_theta_range_degree[1] != 0:                        
+                        # use h2_cterm_phi/theta
+                        this_cterm_theta = h2_cterm_theta_range[0] + np.random.sample()*(h2_cterm_theta_range[1]-h2_cterm_theta_range[0])
+                        # sample on h2's Z axis instead on theta to get uniform spherical surface distribution
+                        this_cterm_phi = np.arccos( h2_cterm_phi_proj_range[0] + \
+                                                    np.random.sample()*(h2_cterm_phi_proj_range[1]-h2_cterm_phi_proj_range[0]) )
+                        # compute h2_cterm_sphere_point based on this_cterm_phi and this_cterm_theta
+                        x = np.cos(this_cterm_theta)*np.sin(this_cterm_phi)
+                        y = np.sin(this_cterm_theta)*np.sin(this_cterm_phi)
+                        z = np.cos(this_cterm_phi)
+                        h2_cterm_sphere_point = np.array([x,y,z])                    
+                    else:
+                        # sample h2_cterm_phi/theta based on h2_cterm_perturb_radius
+                        h2_cterm_sphere_point, this_cterm_theta, this_cterm_phi = sample_point_on_sphere_surface([0,2*np.pi], 
                                                                   [0, 2*np.arcsin(h2_cterm_perturb_radius/2/h2_nc_dist)])
-
+ 
                     h2.params['h2_cterm_theta'] = np.degrees(this_cterm_theta)
                     h2.params['h2_cterm_phi'] = np.degrees(this_cterm_phi)
 
@@ -547,10 +690,15 @@ def build_param_dhrs(
 
                     this_h2_r1_list = []
                     for this_h2 in this_h2_list:
-                        r1 = ParamPose(this_h1.pose)
+                        r1 = ParamPose(this_h1.pose, params_={})
                         r1.pose.append_pose_by_jump(this_h2.pose, r1.pose.size())
                         r1.params = {**this_h1.params, **this_h2.params}
                         this_h2_r1_list.append(r1)
+
+                        #if debug:
+                        #    print('this_h1.params', this_h1.params)
+                        #    print('this_h2.params', this_h2.params)
+                        #    print('r1.params', r1.params)
 
                     # filter r1 by farep
                     this_h2_r1_list = filter_param_poses_by_fa_rep(this_h2_r1_list, sf_farep, farep_cutoff)
@@ -564,8 +712,6 @@ def build_param_dhrs(
 
             # cluster r1 (actually h2) and save only num_top_h2 objs
             if len(this_h1_r1_list) > num_top_h2:
-                if debug:
-                    print('clustering {} h2 into {} groups for output ...'.format(len(this_h1_r1_list), num_top_h2))
                 coords = []
                 for r1 in this_h1_r1_list:
                     # just nc_term_com of h2 should be enough
@@ -575,12 +721,22 @@ def build_param_dhrs(
                 coords = np.array(coords)
                 # use minibatch if large sample size (numbers to be optimized!)
                 if len(coords) > 100:
+                    #if debug:
+                    #    print('kmeans minibatch clustering {} h2 into {} groups for output ...'.format(len(this_h1_r1_list), num_top_h2))
+                    #    time_cluster_start = time.time()
                     kmeans = MiniBatchKMeans(n_clusters=num_top_h2, batch_size=50).fit(coords)
                 else:
+                    #if debug:
+                    #    print('kmeans clustering {} h2 into {} groups for output ...'.format(len(this_h1_r1_list), num_top_h2))
+                    #    time_cluster_start = time.time()
                     kmeans = KMeans(n_clusters=num_top_h2).fit(coords)
+                #if debug:
+                #    time_cluster_end = time.time()
+                #    print('time of clustering: ', time_cluster_end - time_cluster_start)
+
                 # select 1st member from each cluster (TODO: maybe ranked by motifscore?)
-                if debug:
-                    print('kmeans.labels_:  ', kmeans.labels_)
+                #if debug:
+                #    print('kmeans.labels_:  ', kmeans.labels_)
                 clusters = {x:[] for x in kmeans.labels_}
                 for i, label_ in enumerate(kmeans.labels_):
                     clusters[label_].append(this_h1_r1_list[i])
@@ -588,7 +744,46 @@ def build_param_dhrs(
                     #    h2_list[i].pose.dump_pdb(workdir+'h2_{}_{}.pdb'.format(label_, i))
                 clustered_this_h1_r1_list = [clusters[x][0] for x in list(clusters.keys())]
                 this_h1_r1_list = clustered_this_h1_r1_list
+
+            #if debug:
+            #    for this_h1_r1 in this_h1_r1_list:
+            #        print('this_h1_r1 h1 index: ', this_h1_r1.params['h1_index'])
+
             r1_list += this_h1_r1_list
+
+
+
+            if r1_checkpoint_frequency > 0:
+                # write checkpoint files (CAUTION: only write the new output since the last checkpoint)
+                if h1_id > len(cp_h1_index_list) and (h1_id-len(cp_h1_index_list))%r1_checkpoint_frequency == 0:
+                    if debug:
+                        print('writing checkpoints for h1s {} to {}'.format(len(cp_h1_index_list), h1_id))
+                        print('current cp_h1_index_list: ', cp_h1_index_list)
+                        print('current size of r1_list: ', len(r1_list))
+                        time_cp_start = time.time()
+                    cp_r1_name_count_dict = {x:0 for x in range(len(cp_h1_index_list), h1_id+1)}
+                    with open(checkpoint_dir+'r1.list','a') as fout_cp:
+                        for cp_r1 in r1_list:
+                            #print(cp_r1.params['h1_index'])
+                            if cp_r1.params['h1_index'] in range(len(cp_h1_index_list), h1_id+1):
+
+                                cp_r1_name = '{}_{}'.format(cp_r1.params['h1_index'], cp_r1_name_count_dict[cp_r1.params['h1_index']])
+                                fout_cp.write(cp_r1_name+'\n')
+
+                                cp_r1_name_count_dict[cp_r1.params['h1_index']] += 1
+                                cp_r1.pose.dump_pdb(checkpoint_dir+cp_r1_name+'.pdb')
+
+                                with open(checkpoint_dir+cp_r1_name+'.params','w') as fout_params:
+                                    for p in sorted(cp_r1.params.keys()):
+                                        fout_params.write('{}:{}\n'.format(p, cp_r1.params[p]))
+
+                    if debug:
+                        cp_count = sum([cp_r1_name_count_dict[x] for x in cp_r1_name_count_dict])
+                        print('DONE writing checkpoints for h1s {} to {}: {} poses'.format(len(cp_h1_index_list), h1_id, cp_count))
+                        time_cp_end = time.time()
+                        print('Total checkpoints writing time: ', time_cp_end - time_cp_start)
+
+                    cp_h1_index_list += [x for x in range(len(cp_h1_index_list), h1_id+1)]
                     
 
 
@@ -598,7 +793,7 @@ def build_param_dhrs(
             h2.generate_pose()
 
             # list of h2 parametric poses
-            h2_list = [ParamPose(template_pose_=h2.pose, params_={})]
+            h2_list = [ParamPose(template_pose_=h2.pose, params_={'h2_len':h2_len})]
 
             # r_z2:      'self-rotation degree' of h2 about the Z axis
             h2_list = scan_new_geometric_param_list_for_param_poses(h2_list, r_z2_list, param_name='r_z2',
@@ -655,7 +850,7 @@ def build_param_dhrs(
             #
 
             for h2 in h2_list:
-                r1 = ParamPose(this_h1.pose)
+                r1 = ParamPose(this_h1.pose, params_={})
                 r1.pose.append_pose_by_jump(h2.pose, r1.pose.size())
                 r1.params = {**this_h1.params, **h2.params}
                 this_h1_r1_list.append(r1)
@@ -703,9 +898,9 @@ def build_param_dhrs(
 
         this_r1_r1r2_list = []
 
-        if debug:
-            print('r1.params: ')
-            print(r1.params)
+        #if debug:
+        #    print('r1.params: ')
+        #    print(r1.params)
 
 
         if sample_r2:
@@ -744,7 +939,7 @@ def build_param_dhrs(
                                                      atomtype=['CA'])
 
             # create r2h1 obj, move it to r1h2 position 
-            r2h1_start = ParamPose(h1.pose)
+            r2h1_start = ParamPose(h1.pose, params_={})
 
             # move to r1h2 position
             r2h1_start.R = r1h2_R
@@ -782,8 +977,8 @@ def build_param_dhrs(
                     continue
 
 
-                if debug:
-                    print('dist_r2h1_r1h1: ', dist_r2h1_r1h1)
+                #if debug:
+                #    print('dist_r2h1_r1h1: ', dist_r2h1_r1h1)
 
                     '''
                     print('r1h2_r2h1_term_com_dist: ', r1h2_r2h1_term_com_dist)
@@ -798,7 +993,7 @@ def build_param_dhrs(
                 for trial_r2h1_cterm in range(num_trial_r2h1_cterm):
 
                     # superimposing r2h1_nterm_com (similar to h2)    
-                    r2h1 = ParamPose(r2h1_start.pose)
+                    r2h1 = ParamPose(r2h1_start.pose, params_={})
                     r2h1.params['r1h2_r2h1_term_com_dist'] = r1h2_r2h1_term_com_dist
                     r2h1.params['r2h1_nterm_theta'] = np.degrees(this_theta)
                     r2h1.params['r2h1_nterm_phi'] = np.degrees(this_phi)
@@ -824,7 +1019,7 @@ def build_param_dhrs(
                     r2h1.t = r2h1_nterm_com
                     r2h1.translate()
 
-                    r1r2 = ParamPose(r1.pose)
+                    r1r2 = ParamPose(r1.pose, params_={})
                     r1r2.pose.append_pose_by_jump(r2h1.pose, r1r2.pose.size())
                     r1r2.params = {**r1.params, **r2h1.params}
                     # propagate to generate r2h2
@@ -868,8 +1063,8 @@ def build_param_dhrs(
                 else:
                     kmeans = KMeans(n_clusters=num_top_r2h1).fit(coords)
                 # select 1st member from each cluster (TODO: maybe ranked by motifscore?)
-                if debug:
-                    print('kmeans.labels_:  ', kmeans.labels_)
+                #if debug:
+                #    print('kmeans.labels_:  ', kmeans.labels_)
                 clusters = {x:[] for x in kmeans.labels_}
                 for i, label_ in enumerate(kmeans.labels_):
                     clusters[label_].append(this_r1_r1r2_list[i])
@@ -903,13 +1098,19 @@ def build_param_dhrs(
                     # assuming dist_r1h1_r2h1_nterm measures COM dist between r1h1 and r2h1
                     #this_t_x1 = r1.params['t_x1']
                     r_zr_list.append(handedness * np.degrees( 2 * np.arcsin( 0.5 * this_dist / this_t_x1 ) ))
-                r_zr_list = sorted(r_zr_list)
+                #r_zr_list = sorted(r_zr_list) # don't sort, as it will mess up r_zr_list-to-dist_list mapping!!
 
             r2_list = scan_new_geometric_param_list_for_param_poses(r2_list, r_zr_list, param_name='r_zr',
                                        rotation_axis=[0,0,1], radian=False)
+
+            # add handedness info to param
+            for r2 in r2_list:
+                r2.params['handedness'] = handedness
+
             if dist_r1h1_r2h1_nterm_list != [-1]:
                 for r2_i, r2 in enumerate(r2_list):
                     r2.params['d12'] = dist_r1h1_r2h1_nterm_list[r2_i%len(dist_r1h1_r2h1_nterm_list)]
+
             if debug:
                 this_num_of_params = len(r_zr_list)
                 if this_num_of_params >= 1:
@@ -917,7 +1118,7 @@ def build_param_dhrs(
                     this_r1r2_total_param_combs['r_zr'] = this_num_of_params
 
 
-            # r_hr:   (Kobe's repeat twist) rotation degree of r2 from r1 about intra-dhr helical axis (r1's Y axis)
+            # r_xr:   rotation degree of r2 from r1 about X axis 
             # move r2  to origin, rotate, then move it back
             r2_com_list = []
             for r2 in r2_list:
@@ -926,18 +1127,57 @@ def build_param_dhrs(
                 r2.t = -1*r2_com
                 r2.translate()
 
-            r2_list = scan_new_geometric_param_list_for_param_poses(r2_list, r_hr_list, param_name='r_hr',
-                                       rotation_axis=[0,1,0], radian=False)
+            r2_list = scan_new_geometric_param_list_for_param_poses(r2_list, r_xr_list, param_name='r_xr',
+                                       rotation_axis=[1,0,0], radian=False)
             if debug:
-                this_num_of_params = len(r_hr_list)
+                this_num_of_params = len(r_xr_list)
                 if this_num_of_params >= 1:
-                    #print('r_hr: ', this_num_of_params)
-                    this_r1r2_total_param_combs['r_hr'] = this_num_of_params
+                    #print('r_xr: ', this_num_of_params)
+                    this_r1r2_total_param_combs['r_xr'] = this_num_of_params
 
             for r2_id, r2 in enumerate(r2_list):
-                r2.t = r2_com_list[r2_id]
+                r2.t = r2_com_list[int(r2_id/len(r_xr_list))]
                 r2.translate()
 
+
+            # r_yr:   (Kobe's repeat twist) rotation degree of r2 from r1 about intra-dhr helical axis (r1's Y axis)
+            # move r2  to origin, rotate, then move it back
+            r2_com_list = []
+            for r2 in r2_list:
+                r2_com = get_com(r2.pose)
+                r2_com_list.append(r2_com)
+                r2.t = -1*r2_com
+                r2.translate()
+
+            r2_list = scan_new_geometric_param_list_for_param_poses(r2_list, r_yr_list, param_name='r_yr',
+                                       rotation_axis=[0,1,0], radian=False)
+            if debug:
+                this_num_of_params = len(r_yr_list)
+                if this_num_of_params >= 1:
+                    #print('r_yr: ', this_num_of_params)
+                    this_r1r2_total_param_combs['r_yr'] = this_num_of_params
+
+            for r2_id, r2 in enumerate(r2_list):
+                r2.t = r2_com_list[int(r2_id/len(r_xr_list))]
+                r2.translate()
+
+            # t_xr:   (rise) translation of repeat2 (r2) from r1 along Z axis 
+            r2_list = scan_new_geometric_param_list_for_param_poses(r2_list, t_xr_list, param_name='t_xr',
+                                       translation_vector=[1,0,0])
+            if debug:
+                this_num_of_params = len(t_xr_list)
+                if this_num_of_params >= 1:
+                    #print('t_xr: ', this_num_of_params)
+                    this_r1r2_total_param_combs['t_xr'] = this_num_of_params
+
+            # t_yr:   (rise) translation of repeat2 (r2) from r1 along Z axis 
+            r2_list = scan_new_geometric_param_list_for_param_poses(r2_list, t_yr_list, param_name='t_yr',
+                                       translation_vector=[0,1,0])
+            if debug:
+                this_num_of_params = len(t_yr_list)
+                if this_num_of_params >= 1:
+                    #print('t_yr: ', this_num_of_params)
+                    this_r1r2_total_param_combs['t_yr'] = this_num_of_params
 
             # t_zr:   (rise) translation of repeat2 (r2) from r1 along Z axis 
             r2_list = scan_new_geometric_param_list_for_param_poses(r2_list, t_zr_list, param_name='t_zr',
@@ -951,7 +1191,7 @@ def build_param_dhrs(
 
             # merge r1 and r2 together
             for r2 in r2_list:
-                r1r2 = ParamPose(r1.pose)
+                r1r2 = ParamPose(r1.pose, params_={})
                 r1r2.pose.append_pose_by_jump(r2.pose, r1r2.pose.size())
                 r1r2.params = {**r1.params, **r2.params}
                 this_r1_r1r2_list.append(r1r2)
@@ -983,7 +1223,7 @@ def build_param_dhrs(
         print('num of r1r2s: ', len(r1r2_list))
         #for i, this_r1r2 in enumerate(r1r2_list):
         #    print(i, this_r1r2.params)
-        #    this_r1r2.pose.dump_pdb('{}{}/HJDHR_{}.pdb'.format(workdir, output_dir, i))
+        #    this_r1r2.pose.dump_pdb('{}{}/RBL_{}.pdb'.format(workdir, output_dir, i))
     
     time_r2_end = time.time()
     if debug:
@@ -1009,6 +1249,7 @@ def build_param_dhrs(
     for i in range(num_repeats):
         helices.append([r1_len*i+1, r1_len*i+h1_len])
         helices.append([r1_len*i+h1_len+1, r1_len*(i+1)])
+    
     param_dhrs = filter_param_poses_by_ss_degree(param_dhrs, helices=helices,
                     worst_ss_degree_cutoff=worst_ss_degree_cutoff, best_ss_degree_cutoff=best_ss_degree_cutoff,
                      avg_ss_degree_cutoff=avg_ss_degree_cutoff, motifscore_cutoff=motifscore_cutoff, 
@@ -1038,6 +1279,12 @@ def build_param_dhrs(
     #
     #  add helix capping motifs
     #
+
+    if output_silent:
+        output_poselist_list = []
+        output_poselist = []
+        output_baselist_list = []
+        output_baselist = []
     
     if add_helix_capping_motif:
         
@@ -1045,7 +1292,10 @@ def build_param_dhrs(
 
         # trim inner row ncap side to make way for loops
         repeat_len = h1_len + h2_len
-        new_repeat_len = repeat_len - inner_helix_trim_size
+        if inner_helix_trim_size >= 0:
+            new_repeat_len = repeat_len - inner_helix_trim_size 
+        else:
+            new_repeat_len = repeat_len + inner_helix_trim_size
         capped_param_dhrs = []
         capped_param_dhrs_base = []
         
@@ -1054,34 +1304,53 @@ def build_param_dhrs(
         fout_param_cap_base.write('description,{}\n'.format(','.join(
                                             sorted(param_dhrs[0].params.keys()))))
 
-        base_count = 0
+        base_count = -1
 
         fout_param_cap = open('{}{}/{}_capped.dat'.format(workdir, output_dir, 
                                                output_params_file.replace('.dat','')),'w')
         fout_param_cap.write('description,{}\n'.format(','.join(
-                                            sorted(list(param_dhrs[0].params.keys())+['repeat_len']) )))
-
+                                            sorted(list(param_dhrs[0].params.keys())+\
+                                                        ['farep_cap','ccap_cos','ncap_cos','repeat_len']) )))
     
         for this_dhr in param_dhrs:
+
+            base_count += 1
+
             this_dhr_base_pose = this_dhr.pose.clone()
-            this_dhr_base_pose.delete_residue_range_slow(repeat_len+1, repeat_len+inner_helix_trim_size)
-            this_dhr_base_pose.delete_residue_range_slow(1, inner_helix_trim_size)
+            if inner_helix_trim_size >= 0:
+                # trim h1's ncap
+                this_dhr_base_pose.delete_residue_range_slow(repeat_len+1, repeat_len+inner_helix_trim_size)
+                this_dhr_base_pose.delete_residue_range_slow(1, inner_helix_trim_size)
+            else:
+                # trim h2's ccap
+                this_dhr_base_pose.delete_residue_range_slow(repeat_len*2+inner_helix_trim_size+1, repeat_len*2) # + because inner_helix_trim_size < 0
+                this_dhr_base_pose.delete_residue_range_slow(repeat_len+inner_helix_trim_size+1, repeat_len)
             this_dhr_base_pose = poorman_repeat_propagate(this_dhr_base_pose, new_repeat_len, 
                                                                   num_repeat=num_repeats)
             
             # helix_capped_list
             #   return: [pose_ncap, pose_ccap_list[c_id][1], pose_ccap_list[c_id][2], cos_angle, i]
-            helix_capped_list = add_caps_n_filter_direction( this_dhr_base_pose,
+            if inner_helix_trim_size >= 0:
+                h1_len_trim = h1_len-inner_helix_trim_size
+                h2_len_trim = h2_len
+            else:
+                h1_len_trim = h1_len
+                h2_len_trim = h2_len+inner_helix_trim_size
+            helix_capped_list = add_caps_n_filter_direction_w_control( this_dhr_base_pose,
                                     sf,
                                     sf_farep,
                                     farep_cutoff,
-                                      c_cap_phipsi_file,
-                                      n_cap_phipsi_file,
-                                    h1_len=h1_len-inner_helix_trim_size, 
-                                    h2_len=h2_len,
+                                    c_cap_phipsi_file,
+                                    n_cap_phipsi_file,
+                                    h1_len=h1_len_trim, 
+                                    h2_len=h2_len_trim,
                                     cap_search_range=4,
                                     num_res_for_helix_center_com=4,
                                     min_cos_angle=min_cos_angle,
+                                    ccap_min_cos_angle = ccap_min_cos_angle,
+                                    ccap_direction = ccap_direction, # 0: no direction preference, -1: left, 1: right
+                                    ncap_min_cos_angle = ncap_min_cos_angle,
+                                    ncap_direction = ncap_direction, # 0: no direction preference, -1: left, 1: right
                                     min_helix_height_diff=min_helix_height_diff,
                                     max_helix_height_diff=max_helix_height_diff)
             # helix_capped_list returned list
@@ -1102,37 +1371,153 @@ def build_param_dhrs(
                 if not suppress_dhr_output:
                     # TODO: (improve this)add param info to reslabel (as no se what else way 
                     #                                        to write info into pdb...)
-                    this_dhr.pose.pdb_info(pyrosetta.rosetta.core.pose.PDBInfo(this_dhr.pose.size()))
-                    for j, this_p in enumerate(sorted(this_dhr.params.keys())):
-                        this_dhr.pose.pdb_info().add_reslabel(j+1, '{}:{}'.format(this_p, 
-                                                                            this_dhr.params[this_p]))
-                    this_dhr.pose.dump_pdb('{}{}/HJDHR_{}_base.pdb'.format(workdir, output_dir, base_count))
-                    fout_param_cap_base.write( 'HJDHR_{}_base,{}\n'.format(base_count, ','.join(
-                            [str(this_dhr.params[x]) for x in sorted(param_dhrs[0].params.keys())])) )
+                    this_dhr.pose.pdb_info(pyrosetta.rosetta.core.pose.PDBInfo(this_dhr.pose, True))
+
+                    # assign each helix to a new chain (prepare them for loop lookup)
+                    this_chain_id_dict = {}
+                    chains = find_loopless_dhr_chains(this_dhr.pose)  # update chains
+
+                    for h_id in range(len(chains)):
+                        # adding terminal restype, might be important for the connect chain mover ...
+                        pyrosetta.rosetta.core.pose.add_lower_terminus_type_to_pose_residue(this_dhr.pose, chains[h_id][0])
+                        pyrosetta.rosetta.core.pose.add_upper_terminus_type_to_pose_residue(this_dhr.pose, chains[h_id][1])
+                        for resi in range(chains[h_id][0],chains[h_id][1]+1):
+                            this_chain_id_dict[resi] = chain_ids[h_id]
+                            this_dhr.pose.pdb_info().chain(resi, chain_ids[h_id])
+                    this_dhr.pose.update_pose_chains_from_pdb_chains() # very important!
+
+                    output_check = True
+                    if add_short_loops:
+                        connect_chain_ABC_mover.apply(this_dhr.pose)
+                        idealize_mover.apply(this_dhr.pose)
+                        if not geometry_filter.apply(this_dhr.pose):
+                            output_check = False
+                        if output_check:
+                            chains = find_loopless_dhr_chains(this_dhr.pose)  # update chains as short loops were added
+                            worst9mer_range = [worst9mer_flank, chains[0][-1]-worst9mer_flank]
+                            this_xml_objs = pyrosetta.rosetta.protocols.rosetta_scripts.XmlObjects.create_from_string(
+                            f'''
+                            <RESIDUE_SELECTORS>
+                            <Index name="worst9mer_selector" resnums="{worst9mer_range[0]}-{worst9mer_range[1]}"/>
+                            </RESIDUE_SELECTORS>
+                            <FILTERS>
+                            <worst9mer name="worst9mer_a" threshold="0.4" only_helices="false" residue_selector="worst9mer_selector"/>
+                            </FILTERS>
+                            '''
+                            )
+                            this_worst9mer_a_filter = this_xml_objs.get_filter("worst9mer_a")
+                            if not this_worst9mer_a_filter.apply(this_dhr.pose):
+                                output_check = False
+
+                    if output_check:
+
+                        # TODO
+                        # propagate bottom loop
+
+                        for j, this_p in enumerate(sorted(this_dhr.params.keys())):
+                            this_dhr.pose.pdb_info().add_reslabel(j+1, '{}:{}'.format(this_p, this_dhr.params[this_p]))
+                        this_dhr.pose.pdb_info().add_reslabel(len(this_dhr.params.keys())+1, f'length:{this_dhr.pose.size()}')
+
+                        if output_silent:
+                            this_dhr.pose.pdb_info().name('{}_RBL_{}_base.pdb'.format(output_dir, base_count))
+                            if len(output_baselist) >= max_num_pose_per_silent_file:
+                                output_baselist_list.append(output_baselist)
+                                output_baselist = []
+                            output_baselist.append(this_dhr.pose)
+                        else:
+                            this_dhr.pose.dump_pdb('{}{}/RBL_{}_base.pdb'.format(workdir, output_dir, base_count))
+                        fout_param_cap_base.write( 'RBL_{}_base,{}\n'.format(base_count, ','.join(
+                                [str(this_dhr.params[x]) for x in sorted(param_dhrs[0].params.keys())])) )
                 
             
                 for capped_id, capped in enumerate(helix_capped_list):
                     capped_pose_prop = poorman_repeat_propagate(capped[0], capped[5], num_repeat=num_repeats)
                     capped_params = copy.deepcopy(this_dhr.params)
+                    capped_params['farep_cap'] = sf_farep(capped[0])
+                    capped_params['ccap_cos'] = capped[1]
+                    capped_params['ncap_cos'] = capped[3]
                     capped_params['repeat_len'] = capped[5]
                     capped_param_dhrs.append(ParamPose(capped_pose_prop, copy.deepcopy(capped_params)))
                     #capped_param_dhrs.append(ParamPose(capped[0], capped_params))
 
-                    if debug:
-                        print(base_count, capped_id, sf_farep(capped_pose_prop), capped_params)
+                    #if debug:
+                    #    print(base_count, capped_id, sf_farep(capped_pose_prop), capped_params)
                     # TODO: (improve this)add param info to reslabel (as no se what else way to write info into pdb...)
-                    capped_pose_prop.pdb_info(pyrosetta.rosetta.core.pose.PDBInfo(capped_pose_prop.size()))
-                    for j, this_p in enumerate(sorted(capped_params.keys())):
-                        capped_pose_prop.pdb_info().add_reslabel(j+1, '{}:{}'.format(this_p, capped_params[this_p]))
-                    capped_pose_prop.dump_pdb('{}{}/HJDHR_{}_{}.pdb'.format(workdir, output_dir, 
+                    capped_pose_prop.pdb_info(pyrosetta.rosetta.core.pose.PDBInfo(capped_pose_prop, True))
+
+                    # assign each helix to a new chain (prepare them for loop lookup)
+                    this_chain_id_dict = {}
+                    chains = find_loopless_dhr_chains(capped_pose_prop)  # update chains
+                    for h_id in range(len(chains)):
+                        # adding terminal restype, might be important for the connect chain mover ...
+                        pyrosetta.rosetta.core.pose.add_lower_terminus_type_to_pose_residue(capped_pose_prop, chains[h_id][0])
+                        pyrosetta.rosetta.core.pose.add_upper_terminus_type_to_pose_residue(capped_pose_prop, chains[h_id][1])
+                        for resi in range(chains[h_id][0],chains[h_id][1]+1):
+                            this_chain_id_dict[resi] = chain_ids[h_id]
+                            capped_pose_prop.pdb_info().chain(resi, chain_ids[h_id])
+                    capped_pose_prop.update_pose_chains_from_pdb_chains() # very important!
+
+
+                    output_check = True
+                    if add_short_loops:
+                        connect_chain_AB_mover.apply(capped_pose_prop)
+                        idealize_mover.apply(capped_pose_prop)
+                        if not geometry_filter.apply(capped_pose_prop):
+                            output_check = False
+                        if output_check:
+                            chains = find_loopless_dhr_chains(capped_pose_prop)  # update chains as short loops were added
+                            worst9mer_range = [worst9mer_flank, chains[0][-1]-worst9mer_flank]
+                            this_xml_objs = pyrosetta.rosetta.protocols.rosetta_scripts.XmlObjects.create_from_string(
+                            f'''
+                            <RESIDUE_SELECTORS>
+                            <Index name="worst9mer_selector" resnums="{worst9mer_range[0]}-{worst9mer_range[1]}"/>
+                            </RESIDUE_SELECTORS>
+                            <FILTERS>
+                            <worst9mer name="worst9mer_a" threshold="0.4" only_helices="false" residue_selector="worst9mer_selector"/>
+                            </FILTERS>
+                            '''
+                            )
+                            this_worst9mer_a_filter = this_xml_objs.get_filter("worst9mer_a")
+                            if not this_worst9mer_a_filter.apply(capped_pose_prop):
+                                output_check = False
+
+                    if output_check:
+
+                        # TODO
+                        # propagate bottom loop
+
+                        for j, this_p in enumerate(sorted(capped_params.keys())):
+                            capped_pose_prop.pdb_info().add_reslabel(j+1, '{}:{}'.format(this_p, capped_params[this_p]))
+                        capped_pose_prop.pdb_info().add_reslabel(len(capped_params.keys())+1, f'length:{capped_pose_prop.size()}')
+
+                        if output_silent:
+                            capped_pose_prop.pdb_info().name('{}_RBL_{}_{}.pdb'.format(output_dir, base_count, capped_id))
+                            if len(output_poselist) >= max_num_pose_per_silent_file:
+                                output_poselist_list.append(output_poselist)
+                                output_poselist = []
+                            output_poselist.append(capped_pose_prop)
+                        else:
+                            capped_pose_prop.dump_pdb('{}{}/RBL_{}_{}.pdb'.format(workdir, output_dir, 
                                                                                    base_count, capped_id))
-                    fout_param_cap.write( 'HJDHR_{},{}\n'.format(base_count, ','.join([str(capped_params[x]) for x in 
+                        fout_param_cap.write( 'RBL_{},{}\n'.format(base_count, ','.join([str(capped_params[x]) for x in 
                                                                      sorted(capped_param_dhrs[0].params.keys())])) )                
                 
-                base_count += 1
 
         fout_param_cap_base.close()
         fout_param_cap.close()
+
+
+        if output_silent:
+            if len(output_baselist) > 0:
+                output_baselist_list.append(output_baselist)
+            if len(output_poselist) > 0:
+                output_poselist_list.append(output_poselist)
+
+            if not suppress_dhr_output:
+                for oi, output_baselist in enumerate(output_baselist_list):
+                    pyrosetta.io.poses_to_silent(output_baselist, '{}{}/{}_base_{}.silent'.format(workdir, output_dir, output_silent_prefix, oi))
+            for oi, output_poselist in enumerate(output_poselist_list):
+                pyrosetta.io.poses_to_silent(output_poselist, '{}{}/{}_{}.silent'.format(workdir, output_dir, output_silent_prefix, oi))
                 
         if debug:
             print('num of capped param dhrs in output: ', len(capped_param_dhrs))
@@ -1151,29 +1536,101 @@ def build_param_dhrs(
         if len(param_dhrs) > 0:
             fout_param = open('{}{}/{}'.format(workdir, output_dir, output_params_file),'w')
             fout_param.write('description,{}\n'.format(','.join(sorted(param_dhrs[0].params.keys()))))
+            base_count = -1
             for i, this_dhr in enumerate(param_dhrs):
-                if debug:
-                    print(i, sf_farep(this_dhr.pose), this_dhr.params)
+                base_count += 1
+                #if debug:
+                #    print(i, sf_farep(this_dhr.pose), this_dhr.params)
                 # TODO: (improve this)add param info to reslabel (as no se what else way to write info into pdb...)
-                this_dhr.pose.pdb_info(pyrosetta.rosetta.core.pose.PDBInfo(this_dhr.pose.size()))
-                for j, this_p in enumerate(sorted(this_dhr.params.keys())):
-                    this_dhr.pose.pdb_info().add_reslabel(j+1, '{}:{}'.format(this_p, this_dhr.params[this_p]))
-                this_dhr.pose.dump_pdb('{}{}/HJDHR_{}.pdb'.format(workdir, output_dir, i))
-                fout_param.write( 'HJDHR_{},{}\n'.format(i, ','.join([str(this_dhr.params[x]) for x in 
+                this_dhr.pose.pdb_info(pyrosetta.rosetta.core.pose.PDBInfo(this_dhr.pose, True))
+
+                # assign each helix to a new chain (prepare them for loop lookup)
+                this_chain_id_dict = {}
+                chains = find_loopless_dhr_chains(this_dhr.pose)  # update chains
+                for h_id in range(len(chains)):
+                    # adding terminal restype, might be important for the connect chain mover ...
+                    pyrosetta.rosetta.core.pose.add_lower_terminus_type_to_pose_residue(this_dhr.pose, chains[h_id][0])
+                    pyrosetta.rosetta.core.pose.add_upper_terminus_type_to_pose_residue(this_dhr.pose, chains[h_id][1])
+                    for resi in range(chains[h_id][0],chains[h_id][1]+1):
+                        this_chain_id_dict[resi] = chain_ids[h_id]
+                        this_dhr.pose.pdb_info().chain(resi, chain_ids[h_id])
+                this_dhr.pose.update_pose_chains_from_pdb_chains() # very important!
+
+
+                output_check = True
+                if add_short_loops:
+                    connect_chain_ABC_mover.apply(this_dhr.pose)
+                    idealize_mover.apply(this_dhr.pose)
+                    if not geometry_filter.apply(this_dhr.pose):
+                        output_check = False
+                    if output_check:
+                        chains = find_loopless_dhr_chains(this_dhr.pose)  # update chains as short loops were added
+                        worst9mer_range = [worst9mer_flank, chains[0][-1]-worst9mer_flank]
+                        this_xml_objs = pyrosetta.rosetta.protocols.rosetta_scripts.XmlObjects.create_from_string(
+                        f'''
+                        <RESIDUE_SELECTORS>
+                        <Index name="worst9mer_selector" resnums="{worst9mer_range[0]}-{worst9mer_range[1]}"/>
+                        </RESIDUE_SELECTORS>
+                        <FILTERS>
+                        <worst9mer name="worst9mer_a" threshold="0.4" only_helices="false" residue_selector="worst9mer_selector"/>
+                        </FILTERS>
+                        '''
+                        )
+                        this_worst9mer_a_filter = this_xml_objs.get_filter("worst9mer_a")
+                        if not this_worst9mer_a_filter.apply(this_dhr.pose):
+                            output_check = False
+                if output_check:
+
+                    # TODO
+                    # propagate bottom loop
+
+                    for j, this_p in enumerate(sorted(this_dhr.params.keys())):
+                        this_dhr.pose.pdb_info().add_reslabel(j+1, '{}:{}'.format(this_p, this_dhr.params[this_p]))
+                    this_dhr.pose.pdb_info().add_reslabel(len(this_dhr.params.keys())+1, f'length:{this_dhr.pose.size()}')
+
+                    if output_silent:
+                        this_dhr.pose.pdb_info().name('{}_RBL_{}_base.pdb'.format(output_dir, base_count))
+                        if len(output_baselist) >= max_num_pose_per_silent_file:
+                            output_baselist_list.append(output_baselist)
+                            output_baselist = []
+                        output_baselist.append(this_dhr.pose)
+                    else:
+                        this_dhr.pose.dump_pdb('{}{}/RBL_{}_base.pdb'.format(workdir, output_dir, base_count))
+                    fout_param.write( 'RBL_{},{}\n'.format(i, ','.join([str(this_dhr.params[x]) for x in 
                                                                  sorted(param_dhrs[0].params.keys())])) )
+
             fout_param.close()
+
+            
+            if output_silent:
+                if len(output_baselist) > 0:
+                    output_baselist_list.append(output_baselist)
+                for oi, output_baselist in enumerate(output_baselist_list):
+                    pyrosetta.io.poses_to_silent(output_poselist, '{}{}/{}_{}.silent'.format(workdir, output_dir, output_silent_prefix, oi))   
+           
+    
 
     time_end = time.time()
     if debug:
         print('total run time: ', time_end - time_start)
-    
+
+
+    if sample_h2 and r1_checkpoint_frequency > 0:
+        with open(checkpoint_dir+'DONE', 'w') as fout_done:
+            fout_done.write('DONE')
+        if debug:
+            print('cleaning up checkpoint files ...')
+        os.system('rm -f {}*.*'.format(checkpoint_dir, ))
+
+
     return None        
         
 
 
 def parse_scan_range(scan_range):
     '''
-        scan_range(str): a comma seperated strlist or slash seperated min;max;delta
+        scan_range(str): a comma seperated strlist or slash seperated min/max/delta
+                        or underscore seperated min;max;#ofsample for uniform sampling
     '''
     if '/' in scan_range:
         items = scan_range.split('/')
@@ -1184,6 +1641,13 @@ def parse_scan_range(scan_range):
         while x <= max_val:
             out.append(x)
             x += delta
+        return out
+    elif '_' in scan_range:
+        items = scan_range.split('_')
+        assert(len(items)==3)
+        min_val, max_val, num_samples = [float(x) for x in items]
+        num_samples = int(num_samples)
+        out = list(np.random.uniform(min_val, max_val, num_samples))
         return out
     else:
         return [float(x) for x in scan_range.split(',')]
@@ -1208,14 +1672,14 @@ def main():
     parser.add_argument('--r_z1', type=str, default='0;359.99;60.0',
                         help='self-rotation degree of h1 about the Z axis') 
 
-    parser.add_argument('--r_r1', type=str, default='0.0',
-                        help='rotation degree(s) of h1 about the radius line; comma-separated list or slash-separated min;max;stride') 
+    parser.add_argument('--r_x1', type=str, default='0.0',
+                        help='rotation degree(s) of h1 about the radius line (X axis); comma-separated list or slash-separated min/max/stride or underscore-separated min;max;num_samples') 
 
-    parser.add_argument('--r_t1', type=str, default='0.0',
-                        help='rotation degree(s) of h1 about the tangent line; comma-separated list or slash-separated min;max;stride') 
+    parser.add_argument('--r_y1', type=str, default='0.0',
+                        help='rotation degree(s) of h1 about the tangent line (Y axis); comma-separated list or slash-separated min/max/stride or underscore-separated min;max;num_samples') 
 
     parser.add_argument('--t_x1', type=str, default='30.0',
-                        help='(radius) translation of h1 along X axis; comma-separated list or slash-separated min;max;stride') 
+                        help='(radius) translation of h1 along X axis; comma-separated list or slash-separated min/max/stride or underscore-separated min;max;num_samples') 
 
 
 
@@ -1237,7 +1701,16 @@ def main():
                         help='(for h2 sampling) comma-separated list of min,max for rotation angle of h2_nterm_com around h1_cterm_com, starts (when=0) on X axis') 
 
     parser.add_argument('--h2_cterm_perturb_radius', type=float, default=1.5,
-                        help='(for h2 sampling) max distance of deviation of h2_cterm_com from initial position')  
+                        help='(for h2 sampling) max distance of deviation of h2_cterm_com from initial position; will be overwritten by h2_cterm_phi_range_degree \
+                        and h2_cterm_theta_range_degree if neither of them is 0,0')  
+
+    parser.add_argument('--h2_cterm_phi_range_degree', type=str, default='0,0',
+                        help='(for h2 sampling) comma-separated list of min,max for range of angle between h2_nterm->h2_cterm and h1_cterm->h1_nterm; \
+                              when specified together with --h2_cterm_theta_range_degree, this overwrites --h2_cterm_perturb_radius') 
+
+    parser.add_argument('--h2_cterm_theta_range_degree', type=str, default='0,0',
+                        help='(for h2 sampling) comma-separated list of min,max for rotation angle of h2_nterm->h2_cterm around the axis parallel to h1_cterm->h1_nterm \
+                              when specified together with --h2_cterm_phi_range_degree, this overwrites --h2_cterm_perturb_radius') 
 
     parser.add_argument('--num_trial_h2_nterm', type=int, default=10, 
                         help='(for h2 sampling) number of trials for placing nterm of h2') 
@@ -1251,23 +1724,23 @@ def main():
 
 
     parser.add_argument('--r_z2', type=str, default='0;359.99;60.0',
-                        help='self-rotation degree of h2 about its own Z axis; comma-separated list or slash-separated min;max;stride') 
+                        help='self-rotation degree of h2 about its own Z axis; comma-separated list or slash-separated min/max/stride or underscore-separated min;max;num_samples') 
 
     parser.add_argument('--t_x2', type=str, default='2.0',
-                        help='translation along h2_s own X axis of h2 from h1; comma-separated list or slash-separated min;max;stride')  
+                        help='translation along h2_s own X axis of h2 from h1; comma-separated list or slash-separated min/max/stride or underscore-separated min;max;num_samples')  
 
     parser.add_argument('--t_z2', type=str, default='1.0',
-                        help='translation along Z axis of h2 from h1; comma-separated list or slash-separated min;max;stride') 
+                        help='translation along Z axis of h2 from h1; comma-separated list or slash-separated min/max/stride or underscore-separated min;max;num_samples') 
 
     parser.add_argument('--r_r2', type=str, default='10.0',
-                        help='rotation degree(s) of h2 about h1; comma-separated list or slash-separated min;max;stride') 
+                        help='rotation degree(s) of h2 about h1; comma-separated list or slash-separated min/max/stride or underscore-separated min;max;num_samples') 
 
 
 
     # inter-repeat parameters
     parser.add_argument('--dist_r1h1_r2h1_nterm', type=str, default='-1',
-                        help='distance(s) between inner row helix (h1) Nterminus COM, this term with t_x1 overwrite r_zr; \
-                        comma-separated list or slash-separated min;max;stride') 
+                        help='range of distance(s) between inner row helix (h1) Nterminus COM, this term with t_x1 overwrite r_zr; \
+                        comma-separated list or slash-separated min/max/stride or underscore-separated min;max;num_samples') 
 
     parser.add_argument('--handedness', type=int, default=-1, 
                         help='handedness of dhr') 
@@ -1300,14 +1773,25 @@ def main():
 
 
     parser.add_argument('--r_zr', type=str, default='10.0',
-                        help='(remodel_s twist) rotation degree of r2 from r1 about Z axis; comma-separated list or slash-separated min;max;stride') 
+                        help='(remodel_s twist) rotation degree of r2 from r1 about Z axis; comma-separated list or slash-separated min/max/stride or underscore-separated min;max;num_samples') 
 
-    parser.add_argument('--r_hr', type=str, default='10.0',
-                        help='(Kobe_s repeat twist) rotation degree of r2 from r1 about intra-dhr helical axis; \
-                        comma-separated list or slash-separated min;max;stride') 
+    parser.add_argument('--r_xr', type=str, default='0.0',
+                        help='rotation degree of r2 from r1 about X axis; \
+                        comma-separated list or slash-separated min/max/stride or underscore-separated min;max;num_samples') 
+
+    parser.add_argument('--r_yr', type=str, default='10.0',
+                        help='(Kobe_s repeat twist) rotation degree of r2 from r1 about intra-dhr helical (Y) axis; \
+                        comma-separated list or slash-separated min/max/stride or underscore-separated min;max;num_samples') 
+
+    parser.add_argument('--t_xr', type=str, default='0.0',
+                        help='stride for (rise) translation of repeat2 (r2) from r1 along X axis; comma-separated list or slash-separated min/max/stride or underscore-separated min;max;num_samples') 
+
+    parser.add_argument('--t_yr', type=str, default='0.0',
+                        help='stride for (rise) translation of repeat2 (r2) from r1 along Y axis; comma-separated list or slash-separated min/max/stride or underscore-separated min;max;num_samples') 
 
     parser.add_argument('--t_zr', type=str, default='0.0',
-                        help='stride for (rise) translation of repeat2 (r2) from r1 along Z axis; comma-separated list or slash-separated min;max;stride') 
+                        help='stride for (rise) translation of repeat2 (r2) from r1 along Z axis; comma-separated list or slash-separated min/max/stride or underscore-separated min;max;num_samples') 
+
 
 
 
@@ -1317,6 +1801,9 @@ def main():
 
     parser.add_argument('--motifscore_cutoff', type=float, default=-0.01,
                         help='max motifscore allowed') 
+    parser.add_argument('--path_to_motifs', type=str,
+                        help='path to motif directory') 
+
     parser.add_argument('--filter_h1h2_ss_degree', action='store_true', 
                         help='if enabled, only keep repeat unit (h1h2, r1) if worst_ss_degree > 0')
     parser.add_argument('--filter_r1r2_ss_degree', action='store_true', 
@@ -1344,7 +1831,7 @@ def main():
     parser.add_argument('--suppress_dhr_output', action='store_true', 
                         help='if enabled, do not output the base, pre-capped dhr, output only the capped scaffold')
     parser.add_argument('--inner_helix_trim_size', type=int, default=4, 
-                        help='trim this number of residues from inner helix ncap site for long loops') 
+                        help='trim this number of residues from inner helix ncap site for long loops; if given a negative value, trim ccap instead') 
     parser.add_argument('--min_helix_height_diff', type=float, default=3.0,
                         help='minimum height difference between inner and outter row helix after capping along Z-axis. \
                             this is used to avoid clashing between capping motif (and later the loop) with inner row helix') 
@@ -1353,7 +1840,14 @@ def main():
                             this is used to avoid capping motifs being too far away, resulting in big holes near loops') 
     parser.add_argument('--min_cos_angle', type=float, default=0.8,
                         help='min_cos_angle for controlling capping motif anchor positions') 
-
+    parser.add_argument('--ccap_min_cos_angle', type=float, default=10,
+                        help='ccap_min_cos_angle for controlling cterm capping motif anchor positions; only in effect if <=1') 
+    parser.add_argument('--ccap_direction', type=float, default=0,
+                        help='specifying of ccap direction with respect to the Z-axis+cap_com plane; no direction preference, 1: left, -1: right') 
+    parser.add_argument('--ncap_min_cos_angle', type=float, default=10,
+                        help='ncap_min_cos_angle for controlling cterm capping motif anchor positions; only in effect if <=1') 
+    parser.add_argument('--ncap_direction', type=float, default=0,
+                        help='specifying of ncap direction with respect to the Z-axis+cap_com plane; no direction preference, 1: left, -1: right') 
 
 
     # output 
@@ -1367,6 +1861,18 @@ def main():
                         help='n_cap_phipsi_file, use the 4aa version')  
     parser.add_argument('--output_params_file', type=str, default='params.dat',
                         help='name of output params files')  
+    parser.add_argument('--r1_checkpoint_frequency', type=int, default=0, 
+                        help='write a checkpoint for when new h2s (therefore r1) are generated for every this number of h1. \
+                            only used when --sample_h2 is enabled') 
+    parser.add_argument('--output_silent', action='store_true', 
+                        help='if enabled, output a silent file instead of pdbs')
+    parser.add_argument('--output_silent_prefix', type=str, default='out',
+                        help='the prefix of the silent file')  
+    parser.add_argument('--max_num_pose_per_silent_file', type=int, default=1000000,
+                        help='max number of poses to be put in each silent file. default 1000000, so everything in one file')
+
+    parser.add_argument('--add_short_loops', action='store_true',
+                        help='if enabled, use ConnectChainsMover to add short loops for base scaffolds and only the bottoms of capped scaffolds')
 
 
     # debug
@@ -1381,9 +1887,9 @@ def main():
 
 
     cmd_option = []
-    cmd_option.append('-indexed_structure_store:fragment_store ss_grouped_vall_helix_shortLoop.h5')
     cmd_option.append('-symmetry_definition stoopid -old_sym_min true')
     cmd_option.append('-relax:default_repeats 1')
+    cmd_option.append('-mh:path:scores_BB_BB '+args.path_to_motifs+'/xs_bb_ss_FILV_FILV_resl0.5_smooth1.3_msc0.3_mbv1.0/xs_bb_ss_FILV_FILV_resl0.5_smooth1.3_msc0.3_mbv1.0')
     cmd_option.append('-score:max_motif_per_res 3.0')
     mut_arg = '-mute all ' #if not args.verbose else '' 
     cmd_option.append(mut_arg)
@@ -1443,8 +1949,8 @@ def main():
 
     h1_len=args.h1_len, #    length of h1 in each repeat
     r_z1_list = parse_scan_range(args.r_z1), #      'self-rotation degree' of h1 about the Z axis
-    r_r1_list = parse_scan_range(args.r_r1), #       rotation degree of h1 about the radius line
-    r_t1_list = parse_scan_range(args.r_t1), #       rotation degree of h1 about the tangent line
+    r_x1_list = parse_scan_range(args.r_x1), #       rotation degree of h1 about the radius line
+    r_y1_list = parse_scan_range(args.r_y1), #       rotation degree of h1 about the tangent line
     t_x1_list = parse_scan_range(args.t_x1), #      (radius) translation of h1 along X axis
 
     h2_len=args.h2_len, #    length of h2 in each repeat
@@ -1454,6 +1960,8 @@ def main():
     h1h2_term_phi_range_degree=parse_scan_range(args.h1h2_term_phi_range_degree), # range of angle between h1_cterm_com->h2_nterm_com and h1
     h1h2_term_theta_range_degree=parse_scan_range(args.h1h2_term_theta_range_degree),     # rotation angle of h2 around h1, starts (when=0) on X axis
     h2_cterm_perturb_radius=args.h2_cterm_perturb_radius,    # max distance of deviation of h2_cterm_com from initial position
+    h2_cterm_phi_range_degree=parse_scan_range(args.h2_cterm_phi_range_degree), # range of angle between h2_nterm->h2_cterm and h1_cterm-> h1_nterm
+    h2_cterm_theta_range_degree=parse_scan_range(args.h2_cterm_theta_range_degree), # rotation angle of h2 around its axis (parallel to h1)
     num_trial_h2_nterm=args.num_trial_h2_nterm,     #   number of trials for placing nterm and cterm of h2
     num_trial_h2_cterm=args.num_trial_h2_cterm,    #   number of trials for placing nterm and cterm of h2
     num_top_h2=args.num_top_h2, # keep this number of h2 sampled for each h1 (through clustering)
@@ -1474,11 +1982,15 @@ def main():
     dist_r1h1_r2h1_nterm_list = parse_scan_range(args.dist_r1h1_r2h1_nterm),
     handedness = args.handedness,
     r_zr_list = parse_scan_range(args.r_zr), # (remodel's twist) rotation degree of r2 from r1 about Z axis
-    r_hr_list = parse_scan_range(args.r_hr), #  (Kobe's repeat twist) rotation degree of r2 from r1 about intra-dhr helical axis (r1's Y)
+    r_xr_list = parse_scan_range(args.r_xr), # rotation degree of r2 from r1 about X axis 
+    r_yr_list = parse_scan_range(args.r_yr), # (Kobe's repeat twist) rotation degree of r2 from r1 about intra-dhr helical axis (r1's Y axis)
+    t_xr_list = parse_scan_range(args.t_xr), #      (rise) translation of repeat2 (r2) from r1 along X axis    
+    t_yr_list = parse_scan_range(args.t_yr), #      (rise) translation of repeat2 (r2) from r1 along Y axis    
     t_zr_list = parse_scan_range(args.t_zr), #      (rise) translation of repeat2 (r2) from r1 along Z axis    
 
 
     farep_cutoff=args.farep_cutoff,
+
 
     motifscore_cutoff=args.motifscore_cutoff,
     filter_h1h2_ss_degree=args.filter_h1h2_ss_degree,  # only keep repeat unit (h1h2, r1) if worst_ss_degree > 0
@@ -1498,14 +2010,27 @@ def main():
     max_helix_height_diff=args.max_helix_height_diff,
     min_cos_angle=args.min_cos_angle,
 
+    ccap_min_cos_angle = args.ccap_min_cos_angle, # only in effect if <=1
+    ccap_direction = args.ccap_direction, # 1: no direction preference, 1: left, -1: right
+    ncap_min_cos_angle = args.ncap_min_cos_angle, # only in effect if <=1
+    ncap_direction = args.ncap_direction, # 0: no direction preference, 1: left, -1: right
+
     output_params_file=args.output_params_file,
+
+    r1_checkpoint_frequency=args.r1_checkpoint_frequency,
 
     workdir=args.workdir,
     c_cap_phipsi_file=args.c_cap_phipsi_file,
     n_cap_phipsi_file=args.n_cap_phipsi_file,
     output_dir=args.output_dir,
 
+    output_silent = args.output_silent, 
+    output_silent_prefix = args.output_silent_prefix,
+    max_num_pose_per_silent_file = args.max_num_pose_per_silent_file,
     suppress_dhr_output=args.suppress_dhr_output,
+
+    add_short_loops=args.add_short_loops, 
+
     debug=args.debug,
     )
 
