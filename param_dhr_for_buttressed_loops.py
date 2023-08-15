@@ -8,7 +8,7 @@ import copy
 from sklearn.cluster import KMeans, MiniBatchKMeans
 
 import time
-from param_dhr_for_buttressed_loops_helpers_v3 import *
+from param_dhr_for_buttressed_loops_helpers import *
     
 
 
