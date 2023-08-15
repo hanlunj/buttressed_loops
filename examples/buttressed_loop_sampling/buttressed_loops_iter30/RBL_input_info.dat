@@ -1,0 +1,4 @@
+name	cut_start	cut_end	ccap	ncap	frag	before_frag_numres	after_frag_numres	trial	loop_start	loop_end	total_score	loopene_perres	loop_direction
+RBL_input_0017	27	34	../../motifs/angle_ccap.dat	../../motifs/angle_ncap.dat	../../motifs/beta-turns/angle_4aa_19785	5	0	16_0	30	40	-716.6899275443706	-0.21350295976432931	0.9702110477223966
+RBL_input_0013	27	34	../../motifs/angle_ccap.dat	../../motifs/angle_ncap.dat	../../motifs/beta-turns/angle_4aa_1031	5	0	12_0	30	40	-703.4616621291034	-0.06401934269349002	0.8415204570722591
+RBL_input_0028	27	34	../../motifs/angle_ccap.dat	../../motifs/angle_ncap.dat	../../motifs/beta-turns/angle_4aa_1031	5	0	27_0	30	40	-599.1067841269999	0.729053953975482	0.8861584873786315

@@ -1,0 +1,3 @@
+cut_start,cut_end,ccap,ncap,frag,before_frag_numres,after_frag_numres,count
+27,34,../../motifs/angle_ccap.dat,../../motifs/angle_ncap.dat,../../motifs/beta-turns/angle_4aa_1031,5,0,2
+27,34,../../motifs/angle_ccap.dat,../../motifs/angle_ncap.dat,../../motifs/beta-turns/angle_4aa_19785,5,0,1
