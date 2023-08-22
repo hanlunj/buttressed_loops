@@ -5,7 +5,7 @@ numpy (1.18.1 or later)
 
 ### Examples
 Example commands for running parametric repeat protein generation can be found at:  
-examples/parametric_repeat_protein_generation/
+examples/parametric_repeat_protein_generation/i  
 run_param_gen.sh provides simple and quick results in outputs/  
 run_param_gen.full_parameters.sh samples full parameter combination (Caution: long running time)  
   
